@@ -40,8 +40,12 @@ enum Command {
     },
     /// Open the app launcher / calculator / command runner
     Run,
-    /// Toggle "always on top" for the focused window
-    Top,
+    /// Toggle "always on top" for the focused window (tiled windows return to the grid on unpin)
+    Top {
+        /// Target this window address instead of the focused one
+        #[arg(long, hide = true)]
+        address: Option<String>,
+    },
     /// Bulk-rename files with find & replace (shows a preview unless --yes)
     Rename {
         /// Text (or regex with --regex) to find in each file name
@@ -79,7 +83,7 @@ fn main() -> anyhow::Result<()> {
         Command::Ocr { lang } => ocr::extract(&lang),
         Command::Zones { action } => zones::run(action),
         Command::Run => launcher::run(),
-        Command::Top => top::toggle(),
+        Command::Top { address } => top::toggle(address.as_deref()),
         Command::Rename { find, replace, files, regex, ignore_case, yes } => {
             rename::run(rename::Options { find, replace, files, regex, ignore_case, yes })
         }

@@ -90,9 +90,9 @@ quiver rename --regex '^IMG_(\d+)' 'trip-{n}-$1' *.jpg --yes
 
 ## Always On Top (`quiver top`)
 
-Pins the focused floating window so it stays above other windows and follows you to every workspace. Run it again to unpin.
+Pins the focused window so it stays above other windows and follows you to every workspace. Run it again to unpin.
 
-Only floating windows can be pinned (a Hyprland limit). quiver won't float a tiled window for you, because that would pull it out of the tiling layout.
+Hyprland can only pin floating windows, so a tiled window is floated exactly where its tile was while pinned. Unpinning puts it back into the tiling layout on the workspace you're on. Windows that were already floating stay floating.
 
 ## Resize (`quiver resize`)
 
