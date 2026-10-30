@@ -13,7 +13,7 @@ pub enum Action {
     /// Tile every window on the current workspace into a layout
     Apply {
         layout: String,
-        /// Print the hyprctl commands instead of running them
+        /// Print the Hyprland dispatchers instead of running them
         #[arg(long)]
         dry_run: bool,
     },
@@ -79,7 +79,7 @@ struct Rect {
 
 /// The focused monitor's area minus reserved space (bars), plus its active workspace id.
 fn focused_monitor() -> Result<(Rect, i64)> {
-    let monitors: Vec<Value> = serde_json::from_str(&util::output("hyprctl", &["-j", "monitors"])?)?;
+    let monitors: Vec<Value> = serde_json::from_value(util::hypr_query("monitors")?)?;
     let m = monitors
         .iter()
         .find(|m| m["focused"].as_bool() == Some(true))
@@ -124,20 +124,25 @@ fn zone_rect(area: Rect, zone: [f64; 4], gap: i64) -> Rect {
 }
 
 fn place(address: &str, rect: Rect) -> Vec<String> {
-    let target = format!("address:{address}");
+    let window = format!("window = \"address:{address}\"");
     vec![
-        format!("dispatch setfloating {target}"),
-        format!("dispatch resizewindowpixel exact {} {},{target}", rect.w, rect.h),
-        format!("dispatch movewindowpixel exact {} {},{target}", rect.x, rect.y),
+        format!("hl.dsp.window.float({{ action = \"set\", {window} }})"),
+        format!("hl.dsp.window.resize({{ x = {}, y = {}, {window} }})", rect.w, rect.h),
+        format!("hl.dsp.window.move({{ x = {}, y = {}, {window} }})", rect.x, rect.y),
     ]
 }
 
-fn execute(commands: &[String], dry_run: bool) -> Result<()> {
+fn execute(dispatchers: &[String], dry_run: bool) -> Result<()> {
     if dry_run {
-        commands.iter().for_each(|c| println!("hyprctl {c}"));
+        dispatchers.iter().for_each(|d| println!("hl.dispatch({d})"));
         return Ok(());
     }
-    util::output("hyprctl", &["--batch", &commands.join(" ; ")]).map(|_| ())
+    util::dispatch(dispatchers)
+}
+
+/// Layout names, for listing them in the launcher.
+pub fn layout_names() -> Vec<String> {
+    load_config().map(|c| c.layouts.into_keys().collect()).unwrap_or_default()
 }
 
 fn layout<'a>(config: &'a Config, name: &str) -> Result<&'a Vec<[f64; 4]>> {
@@ -172,7 +177,7 @@ pub fn run(action: Action) -> Result<()> {
             let config = load_config()?;
             let zones = layout(&config, &name)?;
             let (area, workspace) = focused_monitor()?;
-            let clients: Vec<Value> = serde_json::from_str(&util::output("hyprctl", &["-j", "clients"])?)?;
+            let clients: Vec<Value> = serde_json::from_value(util::hypr_query("clients")?)?;
             let mut windows: Vec<&Value> = clients
                 .iter()
                 .filter(|c| c["workspace"]["id"].as_i64() == Some(workspace))
@@ -198,7 +203,7 @@ pub fn run(action: Action) -> Result<()> {
                 bail!("layout `{name}` has zones 1 to {}", zones.len());
             }
             let (area, _) = focused_monitor()?;
-            let active: Value = serde_json::from_str(&util::output("hyprctl", &["-j", "activewindow"])?)?;
+            let active: Value = util::hypr_query("activewindow")?;
             let address = active["address"].as_str().context("no focused window")?;
             execute(&place(address, zone_rect(area, zones[zone - 1], config.gap)), dry_run)?;
         }
