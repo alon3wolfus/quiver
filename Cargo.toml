@@ -2,7 +2,7 @@
 name = "quiver"
 version = "0.1.0"
 edition = "2024"
-description = "PowerToys-style tools for Hyprland: launcher, window zones, colour picker, OCR, bulk rename and more"
+description = "PowerToys-style tools for Hyprland"
 license = "GPL-3.0-only"
 repository = "https://github.com/alon3wolfus/quiver"
 readme = "README.md"
@@ -36,7 +36,7 @@ quiver brings Microsoft PowerToys-style tools to Hyprland: a Spotlight-style \
 launcher, FancyZones-like window layouts, always on top, a colour picker, \
 text extraction (OCR), bulk rename and an image resizer, plus a settings window. \
 Needs Hyprland 0.55 or newer (Lua config)."""
-depends = "libc6, libgtk-4-1 (>= 4.12), libgtk4-layer-shell0"
+depends = "libc6 (>= 2.39), libgtk-4-1 (>= 4.12), libgtk4-layer-shell0"
 recommends = "hyprland (>= 0.55), hyprpicker, grim, slurp, wl-clipboard, tesseract-ocr, tesseract-ocr-eng, libnotify-bin"
 assets = [
     ["target/release/quiver", "usr/bin/", "755"],

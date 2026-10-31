@@ -23,8 +23,11 @@ sha256sums=('SKIP')
 pkgver() {
   cd "$_pkgname"
   # v0.1.0-3-gabc1234 → 0.1.0.r3.gabc1234; before the first tag, r42.abc1234
-  git describe --long --tags --abbrev=7 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' ||
+  if git describe --tags >/dev/null 2>&1; then
+    git describe --long --tags --abbrev=7 | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+  else
     printf 'r%s.%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+  fi
 }
 
 prepare() {

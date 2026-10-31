@@ -1,6 +1,15 @@
 # quiver
 a boredom driven microsoft powertoys replacement for linux/hyprland
 
+![The Spotlight-style launcher](docs/launcher.png)
+
+![The settings window](docs/settings-home.png)
+
+<p>
+  <img src="docs/settings-zones.png" width="49%" alt="Zones layouts">
+  <img src="docs/settings-picker.png" width="49%" alt="Colour picker">
+</p>
+
 One binary, seven tools, and a settings window for all of them:
 
 | Command | PowerToys equivalent | What it does |
@@ -18,13 +27,40 @@ Needs Hyprland 0.55 or newer (the Lua config version).
 
 ## Install
 
+### Arch Linux
+
+quiver isn't on the AUR yet, but the repo has ready PKGBUILDs. To build and install the latest commit as a package:
+
+```bash
+cd packaging/aur/quiver-git && makepkg -si
+```
+
+This also installs a "Quiver" menu entry and icon.
+
+### Debian 13 / Ubuntu 25.04 and newer
+
+Download the `.deb` from the [latest release](https://github.com/alon3wolfus/quiver/releases/latest) and install it:
+
+```bash
+sudo apt install ./quiver_0.1.0-1_amd64.deb
+```
+
+Hyprland 0.55+ comes from `trixie-backports` on Debian 13. The `.deb` recommends hyprland, hyprpicker, grim, slurp, wl-clipboard, tesseract and libnotify.
+
+### From source
+
 ```bash
 sudo pacman -S --needed rustup gtk4 gtk4-layer-shell hyprpicker grim slurp wl-clipboard tesseract tesseract-data-eng libnotify
 rustup default stable
 cargo install --path .
 ```
 
-This puts `quiver` in `~/.cargo/bin`. For fish, add that to your PATH with `fish_add_path ~/.cargo/bin`.
+This puts `quiver` in `~/.cargo/bin`. For fish, add that to your PATH with `fish_add_path ~/.cargo/bin`. With a package, `quiver` is in `/usr/bin` and the keybinds below can use plain `"quiver"` instead of the full path.
+
+### Building the packages
+
+- **Arch:** `packaging/aur/quiver/PKGBUILD` (tagged releases) and `packaging/aur/quiver-git/PKGBUILD` (latest commit), ready for the AUR. For `quiver`, push a `vX.Y.Z` tag first, then run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` in that folder.
+- **.deb:** `cargo install cargo-deb && cargo deb` writes `target/debian/quiver_*.deb`. Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the `.deb` and a plain binary on Debian 13 and attaches them to the GitHub release.
 
 ## Hyprland keybinds
 
@@ -129,3 +165,7 @@ quiver resize scan.jpg --size 1200x1200 --overwrite
 - Sizes: `small` (854×480), `medium` (1366×768, the default), `large` (1920×1080), `phone` (320×568), `WIDTHxHEIGHT` or `N%`
 - Keeps the aspect ratio and never enlarges with a fixed size
 - Saves next to the original as `photo (Medium).jpg`, unless you pass `--overwrite`
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE).
