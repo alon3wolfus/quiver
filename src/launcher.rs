@@ -13,37 +13,49 @@ use std::rc::Rc;
 
 const MAX_RESULTS: usize = 50;
 
-// A Spotlight-style glass pill with round filter buttons. The frosted look comes from
-// Hyprland's blur behind the "quiver" layer (see the README's layer_rule).
+// A Spotlight-style frosted pill with round filter buttons: light, fairly opaque blue
+// glass with dark text so it reads well over any wallpaper. Hyprland blurs what's
+// behind the "quiver" layer (see the README's layer_rule).
 const CSS: &str = r#"
 window { background: transparent; }
 .glass {
-    background: alpha(@window_bg_color, 0.55);
-    border: 1px solid alpha(white, 0.14);
-    box-shadow: 0 10px 30px alpha(black, 0.35), inset 0 1px alpha(white, 0.10);
+    background: linear-gradient(to bottom, rgba(232, 242, 253, 0.86), rgba(204, 225, 247, 0.82));
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    box-shadow: 0 10px 30px rgba(10, 30, 60, 0.28), inset 0 1px rgba(255, 255, 255, 0.9);
+    color: #2a3646;
 }
-.bar { border-radius: 999px; padding: 0 20px; min-height: 56px; }
-.bar image { opacity: 0.7; }
+.panel.pill { border-radius: 999px; }
+.panel.expanded { border-radius: 26px; padding-bottom: 8px; }
+.bar { padding: 0 18px 0 20px; min-height: 56px; }
+.bar image { opacity: 0.75; }
 .bar entry, .bar entry:focus-within {
     background: none; border: none; outline: none; box-shadow: none;
-    font-size: 21px; min-height: 56px; padding: 0; color: @window_fg_color;
+    font-size: 21px; min-height: 56px; padding: 0;
 }
-.filter {
-    border-radius: 999px; min-width: 56px; min-height: 56px; padding: 0;
-    color: @window_fg_color;
-}
+.bar entry text { color: #16202c; caret-color: #0a6cff; }
+.bar entry text placeholder { color: rgba(22, 32, 44, 0.5); }
+.bar entry text selection { background: rgba(10, 108, 255, 0.25); color: #16202c; }
+.action { color: rgba(22, 32, 44, 0.45); font-size: 17px; }
+.panel separator { background: rgba(22, 32, 44, 0.12); min-height: 1px; margin: 0 16px 6px 16px; }
+.filter { border-radius: 999px; min-width: 56px; min-height: 56px; padding: 0; }
 /* Papirus ships these symbolic icons at a fixed 16px, so scale them when drawing. */
 .filter image { -gtk-icon-transform: scale(1.4); }
-.filter:hover { background: alpha(@window_fg_color, 0.12); }
-.filter.active { background: alpha(@accent_color, 0.35); border-color: alpha(@accent_color, 0.7); }
-.results { border-radius: 24px; padding: 8px; margin-top: 12px; }
+.filter:hover { background: linear-gradient(to bottom, rgba(242, 248, 255, 0.95), rgba(218, 234, 252, 0.92)); }
+.filter.active {
+    background: linear-gradient(to bottom, rgba(64, 140, 255, 0.92), rgba(30, 110, 240, 0.9));
+    border-color: rgba(255, 255, 255, 0.6);
+    color: white;
+}
+.results { margin: 0 8px; }
 .results list { background: transparent; }
-.results row { border-radius: 14px; padding: 6px 10px; }
-.results row:selected { background: alpha(@accent_color, 0.25); }
+.results row { border-radius: 12px; padding: 6px 10px; }
+.results row:selected { background: rgba(60, 90, 130, 0.16); }
+.results row:hover { background: rgba(60, 90, 130, 0.09); }
+.panel label { color: #16202c; }
 .title { font-weight: 600; font-size: 14px; }
-.subtitle { opacity: 0.65; font-size: 12px; }
-.kind { opacity: 0.45; font-size: 11px; }
-.hint { opacity: 0.55; font-size: 12px; margin: 4px 12px 2px; }
+.subtitle { opacity: 0.7; font-size: 12px; }
+.kind { opacity: 0.5; font-size: 11px; }
+.hint { opacity: 0.6; font-size: 12px; margin: 4px 12px 2px; }
 "#;
 
 /// What the round buttons next to the search bar limit results to.
@@ -109,7 +121,16 @@ impl Item {
         }
     }
 
-    fn icon(&self) -> gtk::Image {
+    /// What Enter does, shown after the query like Spotlight's "— Open".
+    fn action(&self) -> &'static str {
+        match self {
+            Item::App(_) | Item::Tool(_) => "Open",
+            Item::Calc(_) => "Copy",
+            Item::Command(_) => "Run",
+        }
+    }
+
+    fn icon(&self, size: i32) -> gtk::Image {
         let name = match self {
             Item::App(app) => app.icon.as_str(),
             Item::Tool(tool) => tool.icon.as_str(),
@@ -124,7 +145,7 @@ impl Item {
         } else {
             gtk::Image::from_icon_name(name)
         };
-        image.set_pixel_size(32);
+        image.set_pixel_size(size);
         image
     }
 
@@ -363,7 +384,7 @@ fn search(
 fn row(item: &Item) -> gtk::ListBoxRow {
     let (title, subtitle) = item.labels();
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    hbox.append(&item.icon());
+    hbox.append(&item.icon(32));
     let vbox = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(1)
@@ -446,19 +467,44 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
         .margin_bottom(32)
         .build();
 
+    // One glass panel holds the search bar and, once you type, the results below it.
+    // Empty, it's a pill with the round filter buttons beside it.
     let top = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let bar = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .spacing(12)
+    top.set_valign(gtk::Align::Start);
+    let panel = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
         .hexpand(true)
-        .css_classes(["glass", "bar"])
+        .valign(gtk::Align::Start)
+        .css_classes(["glass", "panel", "pill"])
         .build();
+    let bar = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(12).css_classes(["bar"]).build();
     let search_icon = gtk::Image::from_icon_name("system-search-symbolic");
     search_icon.set_pixel_size(20);
     let entry = gtk::Entry::builder().placeholder_text("Quiver Search").hexpand(true).build();
+    // "— Open" and the top hit's icon at the end of the bar.
+    let action = gtk::Label::builder().css_classes(["action"]).visible(false).build();
+    let hit = gtk::Box::builder().valign(gtk::Align::Center).build();
     bar.append(&search_icon);
     bar.append(&entry);
-    top.append(&bar);
+    bar.append(&action);
+    bar.append(&hit);
+    panel.append(&bar);
+
+    let divider = gtk::Separator::builder().visible(false).build();
+    let hint = gtk::Label::builder().xalign(0.0).css_classes(["hint"]).visible(false).build();
+    let list = gtk::ListBox::new();
+    let scroller = gtk::ScrolledWindow::builder()
+        .child(&list)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .propagate_natural_height(true)
+        .max_content_height(460)
+        .visible(false)
+        .css_classes(["results"])
+        .build();
+    panel.append(&divider);
+    panel.append(&hint);
+    panel.append(&scroller);
+    top.append(&panel);
 
     let filter = Rc::new(Cell::new(Filter::All));
     let buttons: Vec<(Filter, gtk::Button)> = FILTERS
@@ -470,31 +516,14 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
                 .child(&image)
                 .tooltip_text(*tooltip)
                 .css_classes(["glass", "filter"])
-                .valign(gtk::Align::Center)
+                .valign(gtk::Align::Start)
                 .build();
             top.append(&button);
             (*f, button)
         })
         .collect();
 
-    let hint = gtk::Label::builder().xalign(0.0).css_classes(["hint"]).visible(false).build();
-    let list = gtk::ListBox::new();
-    let scroller = gtk::ScrolledWindow::builder()
-        .child(&list)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .propagate_natural_height(true)
-        .max_content_height(460)
-        .build();
-    let results = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .css_classes(["glass", "results"])
-        .visible(false)
-        .build();
-    results.append(&hint);
-    results.append(&scroller);
-
     root.append(&top);
-    root.append(&results);
     window.set_child(Some(&root));
 
     let apps = Rc::new(RefCell::new(load_apps()));
@@ -523,10 +552,12 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     };
 
     let refresh = {
-        let (list, scroller, results, items, filter, hint, entry, apps, tool_list) = (
+        let (list, scroller, panel, divider, buttons, items, filter, hint, entry, apps, tool_list) = (
             list.clone(),
             scroller.clone(),
-            results.clone(),
+            panel.clone(),
+            divider.clone(),
+            buttons.clone(),
             items.clone(),
             filter.clone(),
             hint.clone(),
@@ -537,6 +568,8 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
         Rc::new(move || {
             let cached = || commands.get_or_init(load_commands).clone();
             let found = search(&apps.borrow(), &tool_list.borrow(), cached, &entry.text(), filter.get());
+            // Store results before selecting a row, so the bar's top-hit icon matches.
+            *items.borrow_mut() = found.clone();
             list.remove_all();
             for item in &found {
                 list.append(&row(item));
@@ -548,13 +581,41 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
                 hint.set_label(&format!("{name} only"));
             }
             hint.set_visible(active.is_some());
-            results.set_visible(!found.is_empty() || active.is_some());
-            *items.borrow_mut() = found;
+            let expanded = !found.is_empty() || active.is_some();
+            scroller.set_visible(!found.is_empty());
+            divider.set_visible(expanded);
+            if expanded {
+                panel.remove_css_class("pill");
+                panel.add_css_class("expanded");
+            } else {
+                panel.remove_css_class("expanded");
+                panel.add_css_class("pill");
+            }
+            // Like Spotlight, the round buttons step aside once you start typing.
+            let typing = !entry.text().is_empty();
+            for (_, b) in &buttons {
+                b.set_visible(!typing);
+            }
         })
     };
     {
         let refresh = refresh.clone();
         entry.connect_changed(move |_| refresh());
+    }
+    {
+        let (items, action, hit) = (items.clone(), action.clone(), hit.clone());
+        list.connect_row_selected(move |_, row| {
+            while let Some(child) = hit.first_child() {
+                hit.remove(&child);
+            }
+            let items = items.borrow();
+            let item = row.and_then(|r| items.get(r.index() as usize));
+            if let Some(item) = item {
+                action.set_label(&format!("— {}", item.action()));
+                hit.append(&item.icon(28));
+            }
+            action.set_visible(item.is_some());
+        });
     }
     // Clicking a filter turns it on; clicking it again turns it off.
     for (f, button) in &buttons {
