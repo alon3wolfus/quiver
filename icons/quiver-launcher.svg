@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#62cdfb"/>
+      <stop offset="1" stop-color="#0a7cff"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="0.5" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2.2" flood-color="#000000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#bg)"/>
+  <rect x="8" y="8" width="112" height="112" rx="28" fill="url(#gloss)"/>
+  <rect x="8.5" y="8.5" width="111" height="111" rx="27.5" fill="none" stroke="#000000" stroke-opacity="0.08"/>
+  <g filter="url(#shadow)">
+    <circle cx="57" cy="57" r="22" fill="none" stroke="#ffffff" stroke-width="10"/>
+    <line x1="73" y1="73" x2="94" y2="94" stroke="#ffffff" stroke-width="13" stroke-linecap="round"/>
+  </g>
+</svg>

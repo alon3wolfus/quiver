@@ -17,7 +17,7 @@ use anyhow::Result;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use regex::Regex;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::Duration;
@@ -33,71 +33,71 @@ pub struct PageInfo {
 }
 
 pub const PAGES: &[PageInfo] = &[
-    PageInfo { id: "home", title: "Home", icon: "go-home-symbolic", description: "" },
+    PageInfo { id: "home", title: "Home", icon: "quiver-home", description: "" },
     PageInfo {
         id: "launcher",
         title: "Launcher",
-        icon: "system-search-symbolic",
+        icon: "quiver-launcher",
         description: "Search apps and quiver's tools, do quick maths and run commands from anywhere.",
     },
     PageInfo {
         id: "zones",
         title: "Zones",
-        icon: "view-grid-symbolic",
+        icon: "quiver-zones",
         description: "Arrange the windows on your workspace into layouts.",
     },
     PageInfo {
         id: "top",
         title: "Always On Top",
-        icon: "view-pin-symbolic",
+        icon: "quiver-top",
         description: "Pin a window above the others and take it with you to every workspace.",
     },
     PageInfo {
         id: "picker",
         title: "Colour Picker",
-        icon: "color-select-symbolic",
+        icon: "quiver-picker",
         description: "Pick any colour on your screen and copy it as HEX, RGB, HSL, HSV or CMYK.",
     },
     PageInfo {
         id: "ocr",
         title: "Text Extractor",
-        icon: "insert-text-symbolic",
+        icon: "quiver-ocr",
         description: "Copy text from anywhere on your screen, even from images and videos.",
     },
     PageInfo {
         id: "rename",
         title: "Rename",
-        icon: "edit-find-replace-symbolic",
+        icon: "quiver-rename",
         description: "Rename many files at once with find & replace, regular expressions and counters.",
     },
     PageInfo {
         id: "resize",
         title: "Image Resizer",
-        icon: "image-x-generic-symbolic",
+        icon: "quiver-resize",
         description: "Shrink images to a preset size, an exact size or a percentage.",
     },
     PageInfo {
         id: "ruler",
         title: "Screen Ruler",
-        icon: "tool-measure",
+        icon: "quiver-ruler",
         description: "Measure distances and sizes on your screen in pixels, with edge detection.",
     },
     PageInfo {
         id: "zoomit",
         title: "ZoomIt",
-        icon: "zoom-in-symbolic",
+        icon: "quiver-zoomit",
         description: "Zoom in, draw on and record your screen, for presentations and demos.",
     },
     PageInfo {
         id: "locksmith",
         title: "File Locksmith",
-        icon: "changes-prevent-symbolic",
+        icon: "quiver-locksmith",
         description: "See which programs are using a file or folder, and end them so you can delete or move it.",
     },
     PageInfo {
         id: "display",
         title: "Displays",
-        icon: "video-display-symbolic",
+        icon: "quiver-display",
         description: "Resolution, refresh rate, scale, rotation and layout of your monitors, and text size for GTK apps.",
     },
 ];
@@ -178,9 +178,17 @@ pub struct Ctx {
     pub window: gtk::ApplicationWindow,
     pub binds: Vec<Bind>,
     navigate: RefCell<Option<Box<dyn Fn(&str)>>>,
+    resized: RefCell<Vec<Box<dyn Fn(i32)>>>,
 }
 
 impl Ctx {
+    /// Runs `f` with the window's width now and whenever it changes, so pages can
+    /// rearrange themselves when the window is tiled narrow.
+    pub fn on_resize(&self, f: impl Fn(i32) + 'static) {
+        f(self.window.width().max(self.window.default_width()));
+        self.resized.borrow_mut().push(Box::new(f));
+    }
+
     pub fn navigate(&self, id: &str) {
         if let Some(go) = self.navigate.borrow().as_ref() {
             go(id);
@@ -390,20 +398,24 @@ pub fn save_png(widget: &impl IsA<gtk::Widget>, path: &Path) {
     }
 }
 
-fn sidebar_row(info: &PageInfo) -> gtk::ListBoxRow {
+/// A sidebar entry; also returns its label, which hides when the sidebar is compact.
+fn sidebar_row(info: &PageInfo) -> (gtk::ListBoxRow, gtk::Label) {
     let row = hbox(12);
     let indicator = gtk::Box::builder().css_classes(["indicator"]).valign(gtk::Align::Center).build();
     row.append(&indicator);
-    row.append(&icon(info.icon, 16));
-    row.append(&gtk::Label::new(Some(info.title)));
-    gtk::ListBoxRow::builder().child(&row).name(info.id).build()
+    row.append(&icon(info.icon, 20));
+    let title = gtk::Label::new(Some(info.title));
+    row.append(&title);
+    (gtk::ListBoxRow::builder().child(&row).name(info.id).tooltip_text(info.title).build(), title)
 }
 
 fn build_ui(app: &gtk::Application) {
+    let display = gdk::Display::default().expect("no display");
+    crate::icons::install(&display);
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("style.css"));
     gtk::style_context_add_provider_for_display(
-        &gdk::Display::default().expect("no display"),
+        &display,
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
@@ -411,7 +423,8 @@ fn build_ui(app: &gtk::Application) {
     let window = gtk::ApplicationWindow::builder()
         .application(app)
         .title("Quiver Settings")
-        .default_width(1180)
+        // QUIVER_WIDTH lets snapshots check narrow layouts.
+        .default_width(std::env::var("QUIVER_WIDTH").ok().and_then(|w| w.parse().ok()).unwrap_or(1180))
         .default_height(780)
         .css_classes(["quiver"])
         .build();
@@ -419,17 +432,21 @@ fn build_ui(app: &gtk::Application) {
     // A slim title bar like PowerToys: app icon and name on the left.
     let header = gtk::HeaderBar::new();
     let brand = hbox(8);
-    brand.append(&icon("applications-utilities-symbolic", 16));
+    brand.append(&icon("quiver", 18));
     brand.append(&gtk::Label::builder().label("Quiver Settings").css_classes(["app-name"]).build());
     header.pack_start(&brand);
     header.set_title_widget(Some(&gtk::Box::new(gtk::Orientation::Horizontal, 0)));
     window.set_titlebar(Some(&header));
 
-    let ctx = Rc::new(Ctx { window: window.clone(), binds: load_binds(), navigate: RefCell::new(None) });
+    let ctx = Rc::new(Ctx { window: window.clone(), binds: load_binds(), navigate: RefCell::new(None), resized: RefCell::default() });
 
     let sidebar_list = gtk::ListBox::new();
+    // Hidden when the window is narrow, leaving just the icons.
+    let mut sidebar_labels: Vec<gtk::Widget> = Vec::new();
     for (i, info) in PAGES.iter().enumerate() {
-        sidebar_list.append(&sidebar_row(info));
+        let (row, title) = sidebar_row(info);
+        sidebar_list.append(&row);
+        sidebar_labels.push(title.upcast());
         if i == 0 {
             // Separate Home from the tools, like PowerToys' groups.
             let heading = gtk::ListBoxRow::builder()
@@ -438,6 +455,7 @@ fn build_ui(app: &gtk::Application) {
                 .activatable(false)
                 .build();
             sidebar_list.append(&heading);
+            sidebar_labels.push(heading.upcast());
         }
     }
     let sidebar = vbox(0);
@@ -505,7 +523,44 @@ fn build_ui(app: &gtk::Application) {
     let body = hbox(0);
     body.append(&sidebar);
     body.append(&content);
-    window.set_child(Some(&body));
+
+    {
+        let sidebar = sidebar.clone();
+        ctx.on_resize(move |width| {
+            let compact = width < 900;
+            for label in &sidebar_labels {
+                label.set_visible(!compact);
+            }
+            if compact {
+                sidebar.add_css_class("compact");
+            } else {
+                sidebar.remove_css_class("compact");
+            }
+        });
+    }
+    // GTK has no "window resized" signal, so watch the size of an invisible drawing
+    // area laid over the whole window.
+    let watcher = gtk::DrawingArea::builder().hexpand(true).vexpand(true).can_target(false).build();
+    // Pages already laid themselves out for the default width.
+    let last_width = Rc::new(Cell::new(window.default_width()));
+    {
+        let ctx = ctx.clone();
+        watcher.connect_resize(move |_, width, _| {
+            if last_width.replace(width) == width {
+                return;
+            }
+            // Relayout after this allocation pass finishes.
+            let ctx = ctx.clone();
+            glib::idle_add_local_once(move || {
+                for f in ctx.resized.borrow().iter() {
+                    f(width);
+                }
+            });
+        });
+    }
+    let overlay = gtk::Overlay::builder().child(&body).build();
+    overlay.add_overlay(&watcher);
+    window.set_child(Some(&overlay));
     window.present();
 
     // QUIVER_SNAPSHOT=file.png renders the window to a PNG and quits, so the look can be
@@ -532,7 +587,12 @@ pub fn run(page: Option<String>) -> Result<()> {
         }
     }
     START_PAGE.with(|p| *p.borrow_mut() = page);
-    let app = gtk::Application::builder().application_id(APP_ID).build();
+    // A snapshot run mustn't hand off to an already open settings window.
+    let flags = match std::env::var_os("QUIVER_SNAPSHOT") {
+        Some(_) => gtk::gio::ApplicationFlags::NON_UNIQUE,
+        None => gtk::gio::ApplicationFlags::empty(),
+    };
+    let app = gtk::Application::builder().application_id(APP_ID).flags(flags).build();
     app.connect_activate(build_ui);
     app.run_with_args::<&str>(&[]);
     Ok(())

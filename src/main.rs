@@ -4,10 +4,12 @@ mod display;
 mod draw;
 mod files;
 mod gui;
+mod icons;
 mod launcher;
 mod locksmith;
 mod ocr;
 mod overlay;
+mod picks;
 mod picker;
 mod rename;
 mod resize;
@@ -89,7 +91,8 @@ enum Command {
     Rename {
         /// Text (or regex with --regex) to find in each file name
         find: String,
-        /// Replacement; {n} becomes a counter, $1 a regex capture group
+        // Not written as the literal token: clap turns that into a line break in help.
+        /// Replacement; $1 is a regex capture group, and n in curly braces becomes a counter
         replace: String,
         #[arg(required = true)]
         files: Vec<PathBuf>,

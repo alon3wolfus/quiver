@@ -25,8 +25,8 @@ fn banner(ctx: &Ctx) -> gtk::Box {
     banner.set_orientation(gtk::Orientation::Horizontal);
     banner.set_spacing(16);
 
-    let logo = gtk::Box::builder().css_classes(["banner-icon"]).valign(gtk::Align::Center).build();
-    logo.append(&icon("applications-utilities-symbolic", 32));
+    let logo = gtk::Box::builder().valign(gtk::Align::Center).build();
+    logo.append(&icon("quiver", 64));
     banner.append(&logo);
     let text = vbox(2);
     text.set_valign(gtk::Align::Center);
@@ -54,14 +54,14 @@ fn quick_access(ctx: &Rc<Ctx>) -> gtk::Box {
     let grid = gtk::FlowBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .max_children_per_line(4)
-        .min_children_per_line(4)
+        .min_children_per_line(2)
         .homogeneous(true)
         .row_spacing(4)
         .column_spacing(4)
         .build();
     for info in PAGES.iter().skip(1) {
         let tile = vbox(8);
-        tile.append(&icon(info.icon, 28));
+        tile.append(&icon(info.icon, 40));
         tile.append(&gtk::Label::builder().label(info.title).justify(gtk::Justification::Center).wrap(true).build());
         let button = gtk::Button::builder().child(&tile).css_classes(["tile"]).build();
         let (ctx, id) = (ctx.clone(), info.id);
@@ -86,7 +86,7 @@ fn shortcuts(ctx: &Ctx) -> gtk::Box {
             other => other,
         };
         let icon_name = PAGES.iter().find(|p| p.id == page).map_or("input-keyboard-symbolic", |p| p.icon);
-        row.append(&icon(icon_name, 16));
+        row.append(&icon(icon_name, 20));
         let name = label(&describe(&bind.args), &[]);
         name.set_hexpand(true);
         row.append(&name);
@@ -111,7 +111,7 @@ fn utilities(ctx: &Rc<Ctx>) -> gtk::Box {
     card.append(&title);
     for info in PAGES.iter().skip(1) {
         let row = hbox(14);
-        row.append(&icon(info.icon, 18));
+        row.append(&icon(info.icon, 24));
         let name = gtk::Label::builder().label(info.title).xalign(0.0).hexpand(true).build();
         row.append(&name);
         row.append(&icon("go-next-symbolic", 14));
@@ -140,5 +140,11 @@ pub fn build(ctx: &Rc<Ctx>) -> gtk::Box {
     columns.append(&left);
     columns.append(&right);
     page.append(&columns);
+    // Too narrow for two columns: put Utilities under the rest.
+    ctx.on_resize(move |width| {
+        let narrow = width < 1150;
+        columns.set_orientation(if narrow { gtk::Orientation::Vertical } else { gtk::Orientation::Horizontal });
+        right.set_size_request(if narrow { -1 } else { 340 }, -1);
+    });
     page
 }

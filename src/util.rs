@@ -19,7 +19,16 @@ pub fn output(program: &str, args: &[&str]) -> Result<String> {
 
 /// Puts text on the Wayland clipboard.
 pub fn copy(text: &str) -> Result<()> {
-    let mut child = Command::new("wl-copy")
+    copy_as(None, text)
+}
+
+/// Copies `text` with a MIME type, e.g. `text/uri-list` so file managers paste the file itself.
+pub fn copy_as(mime: Option<&str>, text: &str) -> Result<()> {
+    let mut cmd = Command::new("wl-copy");
+    if let Some(mime) = mime {
+        cmd.args(["--type", mime]);
+    }
+    let mut child = cmd
         .stdin(Stdio::piped())
         .spawn()
         .context("failed to start `wl-copy` (install wl-clipboard)")?;

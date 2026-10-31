@@ -1,4 +1,4 @@
-use crate::{calc, files, util, zones};
+use crate::{calc, files, picks::Picks, util, zones};
 use anyhow::Result;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
@@ -58,6 +58,10 @@ window { background: transparent; }
 .title { font-weight: 600; font-size: 15px; }
 .subtitle { opacity: 0.7; font-size: 12.5px; }
 .kind { opacity: 0.5; font-size: 11.5px; }
+.file-actions { opacity: 0; }
+.results row:selected .file-actions, .results row:hover .file-actions { opacity: 1; }
+.file-actions button { min-width: 30px; min-height: 30px; padding: 0; color: #2a3646; }
+.file-actions button:hover { background: rgba(60, 90, 130, 0.14); }
 .hint { opacity: 0.6; font-size: 12px; margin: 4px 12px 2px; }
 "#;
 
@@ -129,6 +133,17 @@ impl Item {
         }
     }
 
+    /// Identifies the result across searches, for remembering picks.
+    fn key(&self) -> Option<String> {
+        match self {
+            Item::App(app) => Some(format!("app:{}", app.exec)),
+            Item::Tool(tool) => Some(format!("tool:{}", tool.args.join(" "))),
+            Item::Command(cmd) => Some(format!("cmd:{cmd}")),
+            Item::File(hit) => Some(format!("file:{}", hit.path)),
+            Item::Calc(_) => None,
+        }
+    }
+
     fn kind(&self) -> &'static str {
         match self {
             Item::App(_) => "Application",
@@ -197,11 +212,54 @@ impl Item {
             Item::Command(cmd) if in_terminal => util::spawn_in_terminal(cmd),
             Item::Command(cmd) => util::spawn(cmd),
             // Shift+Enter shows the file in its folder instead of opening it.
-            Item::File(hit) if in_terminal => {
-                let parent = Path::new(&hit.path).parent().unwrap_or(Path::new("/"));
-                util::spawn(&format!("xdg-open {}", util::sh_quote(&parent.to_string_lossy())))
-            }
+            Item::File(hit) if in_terminal => FileAction::ShowInFolder.run(hit),
             Item::File(hit) => util::spawn(&format!("xdg-open {}", util::sh_quote(&hit.path))),
+        }
+    }
+}
+
+/// Quick things to do with a file result besides opening it.
+#[derive(Clone, Copy)]
+enum FileAction {
+    Copy,
+    CopyPath,
+    ShowInFolder,
+    Terminal,
+    Trash,
+}
+
+impl FileAction {
+    const ALL: [FileAction; 5] =
+        [FileAction::Copy, FileAction::CopyPath, FileAction::ShowInFolder, FileAction::Terminal, FileAction::Trash];
+
+    /// Icon and tooltip (with its shortcut) for the row button.
+    fn button(self) -> (&'static str, &'static str) {
+        match self {
+            FileAction::Copy => ("edit-copy-symbolic", "Copy  (Ctrl+C)"),
+            FileAction::CopyPath => ("insert-link-symbolic", "Copy path  (Ctrl+Shift+C)"),
+            FileAction::ShowInFolder => ("folder-open-symbolic", "Show in folder  (Shift+Enter)"),
+            FileAction::Terminal => ("utilities-terminal-symbolic", "Open terminal here  (Ctrl+T)"),
+            FileAction::Trash => ("user-trash-symbolic", "Move to Trash  (Ctrl+Delete)"),
+        }
+    }
+
+    fn run(self, hit: &files::Hit) -> Result<()> {
+        let path = Path::new(&hit.path);
+        let parent = path.parent().unwrap_or(Path::new("/"));
+        match self {
+            // As a URI list, so pasting in a file manager copies the file itself.
+            FileAction::Copy => util::copy_as(Some("text/uri-list"), &gtk::gio::File::for_path(path).uri()),
+            FileAction::CopyPath => util::copy(&hit.path),
+            FileAction::ShowInFolder => util::spawn(&format!("xdg-open {}", util::sh_quote(&parent.to_string_lossy()))),
+            FileAction::Terminal => {
+                let dir = if hit.is_dir { path } else { parent };
+                util::spawn(&format!("cd {} && {}", util::sh_quote(&dir.to_string_lossy()), util::terminal()))
+            }
+            FileAction::Trash => {
+                gtk::gio::File::for_path(path).trash(gtk::gio::Cancellable::NONE)?;
+                util::notify("Moved to Trash", &hit.path);
+                Ok(())
+            }
         }
     }
 }
@@ -217,7 +275,7 @@ fn search_files(text: &str, index: Option<&files::Index>) -> (Vec<Item>, String)
             return (Vec::new(), "Search every file on the system".into());
         }
         return match files::locate(query) {
-            Ok(hits) => (to_items(hits), "Everywhere (plocate)".into()),
+            Ok(hits) => (to_items(hits), "Everywhere  ·  Ctrl+C copy  ·  Ctrl+T terminal  ·  Ctrl+Del trash".into()),
             Err(err) => (Vec::new(), format!("{err:#}")),
         };
     }
@@ -227,7 +285,7 @@ fn search_files(text: &str, index: Option<&files::Index>) -> (Vec<Item>, String)
         Some(index) if query.trim().is_empty() => {
             (Vec::new(), format!("Search {} files in your home folder  ·  $$ searches everywhere", index.len()))
         }
-        Some(index) => (to_items(index.search(query)), "Home folder  ·  Shift+Enter shows it in its folder".into()),
+        Some(index) => (to_items(index.search(query)), "Home folder  ·  Ctrl+C copy  ·  Ctrl+T terminal  ·  Ctrl+Del trash".into()),
     }
 }
 
@@ -240,23 +298,23 @@ fn tools() -> Vec<Tool> {
         args: args.iter().map(|a| a.to_string()).collect(),
     };
     let mut tools = vec![
-        tool("Colour Picker", "Pick a colour from the screen", "color colour picker eyedropper hex", "color-select-symbolic", &["pick"]),
-        tool("Text Extractor", "Copy the text from a screen region (OCR)", "ocr text extractor screenshot", "insert-text-symbolic", &["ocr"]),
-        tool("Always On Top", "Pin or unpin the focused window", "always on top pin float sticky", "view-pin-symbolic", &["top"]),
-        tool("Quiver Settings", "Open the settings window with every tool", "settings preferences powertoys quiver rename resize", "preferences-system-symbolic", &["settings"]),
-        tool("Screen Ruler", "Measure distances on the screen", "ruler measure pixels distance size", "tool-measure", &["ruler"]),
-        tool("Draw on Screen", "Annotate a frozen screenshot, then copy or save it", "draw annotate zoomit pen", "draw-freehand-symbolic", &["draw"]),
-        tool("Zoom", "Zoom the screen in or back to normal", "zoom magnify zoomit", "zoom-in-symbolic", &["zoom", "toggle"]),
-        tool("Record Screen", "Start or stop recording the screen", "record video capture zoomit screencast", "media-record-symbolic", &["record"]),
-        tool("Displays", "Resolution, scale and layout of your monitors", "display monitor resolution scale refresh", "video-display-symbolic", &["settings", "display"]),
-        tool("File Locksmith", "See which programs are using a file", "locksmith file lock in use process", "changes-prevent-symbolic", &["settings", "locksmith"]),
+        tool("Colour Picker", "Pick a colour from the screen", "color colour picker eyedropper hex", "quiver-picker", &["pick"]),
+        tool("Text Extractor", "Copy the text from a screen region (OCR)", "ocr text extractor screenshot", "quiver-ocr", &["ocr"]),
+        tool("Always On Top", "Pin or unpin the focused window", "always on top pin float sticky", "quiver-top", &["top"]),
+        tool("Quiver Settings", "Open the settings window with every tool", "settings preferences powertoys quiver rename resize", "quiver", &["settings"]),
+        tool("Screen Ruler", "Measure distances on the screen", "ruler measure pixels distance size", "quiver-ruler", &["ruler"]),
+        tool("Draw on Screen", "Annotate a frozen screenshot, then copy or save it", "draw annotate zoomit pen", "quiver-draw", &["draw"]),
+        tool("Zoom", "Zoom the screen in or back to normal", "zoom magnify zoomit", "quiver-zoomit", &["zoom", "toggle"]),
+        tool("Record Screen", "Start or stop recording the screen", "record video capture zoomit screencast", "quiver-record", &["record"]),
+        tool("Displays", "Resolution, scale and layout of your monitors", "display monitor resolution scale refresh", "quiver-display", &["settings", "display"]),
+        tool("File Locksmith", "See which programs are using a file", "locksmith file lock in use process", "quiver-locksmith", &["settings", "locksmith"]),
     ];
     for layout in zones::layout_names() {
         tools.push(Tool {
             name: format!("Zones: {layout}"),
             description: "Tile the windows on this workspace".into(),
             keywords: format!("zones layout tile fancyzones {layout}"),
-            icon: "view-grid-symbolic".into(),
+            icon: "quiver-zones".into(),
             args: vec!["zones".into(), "apply".into(), layout],
         });
     }
@@ -449,7 +507,9 @@ fn search(
     items
 }
 
-fn row(item: &Item) -> gtk::ListBoxRow {
+type OnFileAction = Rc<dyn Fn(&files::Hit, FileAction)>;
+
+fn row(item: &Item, on_file: &OnFileAction) -> gtk::ListBoxRow {
     let (title, subtitle) = item.labels();
     let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 14);
     hbox.append(&item.icon(40));
@@ -472,6 +532,18 @@ fn row(item: &Item) -> gtk::ListBoxRow {
         vbox.append(&label(subtitle, "subtitle"));
     }
     hbox.append(&vbox);
+    // Files get quick-action buttons, shown on the selected or hovered row.
+    if let Item::File(hit) = item {
+        let actions = gtk::Box::builder().spacing(2).valign(gtk::Align::Center).css_classes(["file-actions"]).build();
+        for action in FileAction::ALL {
+            let (icon, tip) = action.button();
+            let button = gtk::Button::builder().icon_name(icon).tooltip_text(tip).css_classes(["flat", "circular"]).build();
+            let (hit, on_file) = (hit.clone(), on_file.clone());
+            button.connect_clicked(move |_| on_file(&hit, action));
+            actions.append(&button);
+        }
+        hbox.append(&actions);
+    }
     let kind = label(item.kind().into(), "kind");
     kind.set_valign(gtk::Align::Center);
     hbox.append(&kind);
@@ -507,10 +579,12 @@ fn socket_path() -> PathBuf {
 }
 
 fn build_ui(app: &gtk::Application, mode: Mode) {
+    let display = gdk::Display::default().expect("no display");
+    crate::icons::install(&display);
     let provider = gtk::CssProvider::new();
     provider.load_from_string(CSS);
     gtk::style_context_add_provider_for_display(
-        &gdk::Display::default().expect("no display"),
+        &display,
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
@@ -565,7 +639,7 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     let search_icon = gtk::Image::from_icon_name("system-search-symbolic");
     search_icon.set_pixel_size(20);
     let entry = gtk::Entry::builder()
-        .placeholder_text("Quiver Search   ·   $ files   ·   $$ everywhere")
+        .placeholder_text("Quiver Search   ·   $ files only   ·   $$ everywhere")
         .hexpand(true)
         .build();
     // "— Open" and the top hit's icon at the end of the bar.
@@ -620,7 +694,7 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     let items: Rc<RefCell<Vec<Item>>> = Rc::default();
     let file_index: Rc<RefCell<Option<Arc<files::Index>>>> = Rc::default();
     let indexing = Rc::new(Cell::new(false));
-    // (Re)builds the home index off the UI thread, then refreshes a `$` search.
+    // (Re)builds the home index off the UI thread, then refreshes any search waiting on it.
     let start_index = {
         let (file_index, indexing, entry) = (file_index.clone(), indexing.clone(), entry.clone());
         Rc::new(move || {
@@ -633,7 +707,7 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
                     *file_index.borrow_mut() = Some(Arc::new(index));
                 }
                 indexing.set(false);
-                if entry.text().starts_with('$') {
+                if !entry.text().is_empty() {
                     entry.emit_by_name::<()>("changed", &[]);
                 }
             });
@@ -659,8 +733,22 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
         }
     };
 
+    let on_file: OnFileAction = {
+        let (close, start_index) = (close.clone(), start_index.clone());
+        Rc::new(move |hit: &files::Hit, action: FileAction| {
+            if let Err(err) = action.run(hit) {
+                util::notify("quiver", &format!("{err:#}"));
+            }
+            if matches!(action, FileAction::Trash) {
+                start_index();
+            }
+            close();
+        })
+    };
+
+    let picks = Rc::new(RefCell::new(Picks::load()));
     let refresh = {
-        let (file_index, start_index) = (file_index.clone(), start_index.clone());
+        let (file_index, start_index, on_file, picks) = (file_index.clone(), start_index.clone(), on_file.clone(), picks.clone());
         let (list, scroller, panel, divider, buttons, items, filter, hint, entry, apps, tool_list) = (
             list.clone(),
             scroller.clone(),
@@ -687,13 +775,31 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
                 message = Some(msg);
                 found
             } else {
-                search(&apps.borrow(), &tool_list.borrow(), cached, &text, filter.get())
+                let found = search(&apps.borrow(), &tool_list.borrow(), cached, &text, filter.get());
+                // Nothing by that name in apps/tools: fall back to the home file search.
+                let plain = !text.trim().is_empty() && !text.trim_start().starts_with(['>', '=']);
+                if found.is_empty() && plain && filter.get() == Filter::All {
+                    if file_index.borrow().is_none() {
+                        start_index();
+                    }
+                    let index = file_index.borrow().clone();
+                    let (files, msg) = search_files(text.trim(), index.as_deref());
+                    if !files.is_empty() || index.is_none() {
+                        message = Some(format!("No apps match, showing files  ·  {msg}"));
+                    }
+                    files
+                } else {
+                    found
+                }
             };
+            // Results you keep picking for this search go first.
+            let mut found = found;
+            picks.borrow().rank(&text, &mut found, Item::key);
             // Store results before selecting a row, so the bar's top-hit icon matches.
             *items.borrow_mut() = found.clone();
             list.remove_all();
             for item in &found {
-                list.append(&row(item));
+                list.append(&row(item, &on_file));
             }
             scroller.vadjustment().set_value(0.0);
             select(&list, &scroller, 0);
@@ -758,9 +864,12 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     }
 
     let launch = {
-        let (items, close) = (items.clone(), close.clone());
+        let (items, close, entry) = (items.clone(), close.clone(), entry.clone());
         Rc::new(move |index: i32, in_terminal: bool| {
             if let Some(item) = items.borrow().get(index as usize) {
+                if let Some(key) = item.key() {
+                    picks.borrow_mut().record(&entry.text(), &key);
+                }
                 if let Err(err) = item.activate(in_terminal) {
                     util::notify("quiver", &format!("{err:#}"));
                 }
@@ -785,7 +894,7 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     {
-        let (list, scroller, close) = (list.clone(), scroller.clone(), close.clone());
+        let (list, scroller, close, items) = (list.clone(), scroller.clone(), close.clone(), items.clone());
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             let step = match key {
                 gdk::Key::Escape => {
@@ -796,6 +905,24 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
                     if let Some(row) = list.selected_row() {
                         launch(row.index(), true);
                     }
+                    return glib::Propagation::Stop;
+                }
+                // Ctrl shortcuts act on a selected file; otherwise they reach the entry as usual.
+                _ if modifiers.contains(gdk::ModifierType::CONTROL_MASK) => {
+                    let shift = modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+                    let action = match key.to_lower() {
+                        gdk::Key::c if shift => FileAction::CopyPath,
+                        gdk::Key::c => FileAction::Copy,
+                        gdk::Key::t => FileAction::Terminal,
+                        gdk::Key::Delete | gdk::Key::KP_Delete => FileAction::Trash,
+                        _ => return glib::Propagation::Proceed,
+                    };
+                    let selected = list.selected_row().and_then(|r| match items.borrow().get(r.index() as usize) {
+                        Some(Item::File(hit)) => Some(hit.clone()),
+                        _ => None,
+                    });
+                    let Some(hit) = selected else { return glib::Propagation::Proceed };
+                    on_file(&hit, action);
                     return glib::Propagation::Stop;
                 }
                 gdk::Key::Down | gdk::Key::Tab => 1,
