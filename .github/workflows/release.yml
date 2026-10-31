@@ -1,5 +1,6 @@
 # Builds quiver for every pushed version tag (v0.1.0, v0.2.0, ...) and attaches
-# a .deb and a plain Linux binary to the GitHub release, so people don't have to compile.
+# a .deb, an Arch package and a plain Linux binary to the GitHub release, so people
+# don't have to compile. install.sh downloads these.
 name: Release
 
 on:
@@ -11,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  debian:
     runs-on: ubuntu-latest
     # Build inside Debian 13 so the .deb matches the libraries Debian/Ubuntu users have.
     container: debian:trixie
@@ -35,17 +36,59 @@ jobs:
           cargo install cargo-deb --locked
           cargo deb --locked
 
-      - name: Collect release files
+      - name: Collect files
         run: |
           mkdir dist
           cp target/debian/*.deb dist/
           tar -C target/release -czf "dist/quiver-${GITHUB_REF_NAME}-x86_64-linux.tar.gz" quiver
-          cd dist && sha256sum * > SHA256SUMS
 
       - uses: actions/upload-artifact@v4
         with:
-          name: quiver-linux
+          name: quiver-debian
           path: dist/*
+
+  arch:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm --needed git rust gtk4 gtk4-layer-shell
+
+      - uses: actions/checkout@v4
+
+      # Builds packaging/aur/quiver/PKGBUILD from this checkout instead of a download,
+      # so it works before the tag's source tarball exists.
+      - name: Build package
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          mkdir /build
+          sed "s/^pkgver=.*/pkgver=$version/" packaging/aur/quiver/PKGBUILD > /build/PKGBUILD
+          git archive --prefix="quiver-$version/" -o "/build/quiver-$version.tar.gz" HEAD
+          useradd -m builder
+          chown -R builder /build
+          # -d: runtime dependencies like hyprland aren't needed to build. Tests ran in the debian job.
+          su builder -c "cd /build && makepkg -d --nocheck --noconfirm"
+          mkdir dist
+          find /build -maxdepth 1 -name 'quiver-*.pkg.tar.zst' ! -name '*-debug-*' -exec cp {} dist/ \;
+          ls dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quiver-arch
+          path: dist/*
+
+  release:
+    needs: [debian, arch]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
 
       - name: Attach to GitHub release
         if: startsWith(github.ref, 'refs/tags/')

@@ -1,7 +1,7 @@
 # Maintainer: alon3wolfus <260382617+alon3wolfus@users.noreply.github.com>
 
 pkgname=quiver
-pkgver=0.1.0
+pkgver=0.2.0
 pkgrel=1
 pkgdesc='PowerToys-style tools for Hyprland: launcher, window zones, colour picker, OCR, bulk rename and more'
 arch=('x86_64' 'aarch64')

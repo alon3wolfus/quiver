@@ -38,25 +38,39 @@ Needs Hyprland 0.55 or newer (the Lua config version).
 
 ## Install
 
-### Arch Linux
+### Arch Linux, Debian 13 and Ubuntu 25.04+ (one command)
 
-quiver isn't on the AUR yet, but the repo has ready PKGBUILDs. To build and install the latest commit as a package:
+```bash
+curl -fsSL https://raw.githubusercontent.com/alon3wolfus/quiver/main/install.sh | sh
+```
+
+[install.sh](install.sh) downloads the latest release's Arch package or `.deb` and installs it with pacman or apt, which also pull in the dependencies. On Arch it offers the optional extras (OCR language data, notifications, screen recording, whole-system file search). It installs a normal package, so updating is running it again, and removing is `sudo pacman -R quiver` or `sudo apt remove quiver`. Read the script first if you like; it's short.
+
+### Arch Linux, by hand
+
+Download `quiver-*-x86_64.pkg.tar.zst` from the [latest release](https://github.com/alon3wolfus/quiver/releases/latest), then:
+
+```bash
+sudo pacman -U quiver-*-x86_64.pkg.tar.zst
+```
+
+Or build the latest commit yourself with the PKGBUILD in the repo:
 
 ```bash
 cd packaging/aur/quiver-git && makepkg -si
 ```
 
-This also installs a "Quiver" menu entry and icon.
+### Debian 13 / Ubuntu 25.04 and newer, by hand
 
-### Debian 13 / Ubuntu 25.04 and newer
-
-Download the `.deb` from the [latest release](https://github.com/alon3wolfus/quiver/releases/latest) and install it:
+Download `quiver_*_amd64.deb` from the [latest release](https://github.com/alon3wolfus/quiver/releases/latest), then:
 
 ```bash
-sudo apt install ./quiver_0.1.0-1_amd64.deb
+sudo apt install ./quiver_*_amd64.deb
 ```
 
-Hyprland 0.55+ comes from `trixie-backports` on Debian 13. The `.deb` recommends hyprland, hyprpicker, grim, slurp, wl-clipboard, tesseract and libnotify.
+Hyprland 0.55+ comes from `trixie-backports` on Debian 13. The `.deb` recommends hyprland, hyprpicker, grim, slurp, wl-clipboard, tesseract, libnotify and plocate. Older releases (Debian 12, Ubuntu 24.04) lack gtk4-layer-shell, so build from source there.
+
+All installs add a "Quiver" app menu entry and icon.
 
 ### From source
 
@@ -71,7 +85,8 @@ This puts `quiver` in `~/.cargo/bin`. For fish, add that to your PATH with `fish
 ### Building the packages
 
 - **Arch:** `packaging/aur/quiver/PKGBUILD` (tagged releases) and `packaging/aur/quiver-git/PKGBUILD` (latest commit), ready for the AUR. For `quiver`, push a `vX.Y.Z` tag first, then run `updpkgsums` and `makepkg --printsrcinfo > .SRCINFO` in that folder.
-- **.deb:** `cargo install cargo-deb && cargo deb` writes `target/debian/quiver_*.deb`. Pushing a `v*` tag runs `.github/workflows/release.yml`, which builds the `.deb` and a plain binary on Debian 13 and attaches them to the GitHub release.
+- **.deb:** `cargo install cargo-deb && cargo deb` writes `target/debian/quiver_*.deb`.
+- **Releases:** bump `version` in `Cargo.toml` (and `pkgver` in the PKGBUILD), then push a `vX.Y.Z` tag. `.github/workflows/release.yml` builds the `.deb` on Debian 13, the Arch package on Arch, and a plain binary, and attaches them to the GitHub release, where install.sh finds them.
 
 ## Hyprland keybinds
 
