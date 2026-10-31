@@ -156,6 +156,48 @@ fn layout<'a>(config: &'a Config, name: &str) -> Result<&'a Vec<[f64; 4]>> {
     }
 }
 
+/// All layouts, sorted by name, for drawing previews in the settings window.
+pub fn layouts() -> Result<Vec<(String, Vec<[f64; 4]>)>> {
+    Ok(load_config()?.layouts.into_iter().collect())
+}
+
+/// Writes the default layouts file if there isn't one yet, and returns its path.
+pub fn ensure_config() -> Result<PathBuf> {
+    let path = config_path();
+    if !path.exists() {
+        std::fs::create_dir_all(path.parent().unwrap())?;
+        std::fs::write(&path, DEFAULT_CONFIG)?;
+    }
+    Ok(path)
+}
+
+/// Tiles every window on the current workspace into a layout.
+pub fn apply(name: &str, dry_run: bool) -> Result<()> {
+    let config = load_config()?;
+    let zones = layout(&config, name)?;
+    let (area, workspace) = focused_monitor()?;
+    let clients: Vec<Value> = serde_json::from_value(util::hypr_query("clients")?)?;
+    let mut windows: Vec<&Value> = clients
+        .iter()
+        .filter(|c| c["workspace"]["id"].as_i64() == Some(workspace))
+        .filter(|c| c["mapped"].as_bool() == Some(true) && c["hidden"].as_bool() != Some(true))
+        // Leave the settings window alone when a layout is applied from it.
+        .filter(|c| c["class"].as_str() != Some(crate::gui::APP_ID))
+        .collect();
+    // Most recently focused window gets the first (usually biggest) zone.
+    windows.sort_by_key(|c| c["focusHistoryID"].as_i64().unwrap_or(i64::MAX));
+    // Windows beyond the zone count wrap around and share zones.
+    let commands: Vec<String> = windows
+        .iter()
+        .enumerate()
+        .flat_map(|(i, c)| {
+            let rect = zone_rect(area, zones[i % zones.len()], config.gap);
+            place(c["address"].as_str().unwrap_or_default(), rect)
+        })
+        .collect();
+    execute(&commands, dry_run)
+}
+
 pub fn run(action: Action) -> Result<()> {
     match action {
         Action::List => {
@@ -169,33 +211,9 @@ pub fn run(action: Action) -> Result<()> {
             if path.exists() {
                 bail!("{} already exists", path.display());
             }
-            std::fs::create_dir_all(path.parent().unwrap())?;
-            std::fs::write(&path, DEFAULT_CONFIG)?;
-            println!("wrote {}", path.display());
+            println!("wrote {}", ensure_config()?.display());
         }
-        Action::Apply { layout: name, dry_run } => {
-            let config = load_config()?;
-            let zones = layout(&config, &name)?;
-            let (area, workspace) = focused_monitor()?;
-            let clients: Vec<Value> = serde_json::from_value(util::hypr_query("clients")?)?;
-            let mut windows: Vec<&Value> = clients
-                .iter()
-                .filter(|c| c["workspace"]["id"].as_i64() == Some(workspace))
-                .filter(|c| c["mapped"].as_bool() == Some(true) && c["hidden"].as_bool() != Some(true))
-                .collect();
-            // Most recently focused window gets the first (usually biggest) zone.
-            windows.sort_by_key(|c| c["focusHistoryID"].as_i64().unwrap_or(i64::MAX));
-            // Windows beyond the zone count wrap around and share zones.
-            let commands: Vec<String> = windows
-                .iter()
-                .enumerate()
-                .flat_map(|(i, c)| {
-                    let rect = zone_rect(area, zones[i % zones.len()], config.gap);
-                    place(c["address"].as_str().unwrap_or_default(), rect)
-                })
-                .collect();
-            execute(&commands, dry_run)?;
-        }
+        Action::Apply { layout: name, dry_run } => apply(&name, dry_run)?,
         Action::Snap { layout: name, zone, dry_run } => {
             let config = load_config()?;
             let zones = layout(&config, &name)?;

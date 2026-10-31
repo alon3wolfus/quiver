@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 
 /// A target size: fit inside a box, or scale by a percentage.
 #[derive(Debug, PartialEq)]
-enum Size {
+pub enum Size {
     Fit { w: u32, h: u32, label: String },
     Percent(u32),
 }
 
 /// Parses "medium", "1280x720" or "50%". Presets match PowerToys Image Resizer.
-fn parse_size(text: &str) -> Result<Size> {
+pub fn parse_size(text: &str) -> Result<Size> {
     let preset = |w, h, label: &str| Ok(Size::Fit { w, h, label: label.into() });
     match text.to_lowercase().as_str() {
         "small" => return preset(854, 480, "Small"),
@@ -62,7 +62,7 @@ fn output_path(path: &Path, size: &Size) -> PathBuf {
     path.with_file_name(name)
 }
 
-fn resize_one(path: &Path, size: &Size, overwrite: bool) -> Result<String> {
+pub fn resize_one(path: &Path, size: &Size, overwrite: bool) -> Result<String> {
     let img = image::open(path).with_context(|| format!("can't open {}", path.display()))?;
     let (w, h) = target(size, img.width(), img.height());
     if (w, h) == (img.width(), img.height()) {

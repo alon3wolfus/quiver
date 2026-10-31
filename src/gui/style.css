@@ -1,0 +1,109 @@
+/* PowerToys-style layout, coloured by the user's GTK theme so it matches the desktop. */
+
+window.quiver { background: @window_bg_color; color: @window_fg_color; }
+
+/* Title bar */
+.titlebar { padding: 8px 14px; }
+.app-name { font-size: 12px; opacity: 0.8; }
+
+/* Sidebar */
+.sidebar { padding: 4px 8px 12px 8px; min-width: 250px; }
+.sidebar list { background: transparent; }
+.sidebar row { border-radius: 6px; padding: 9px 10px; margin: 1px 0; }
+.sidebar row:hover { background: alpha(@window_fg_color, 0.05); }
+.sidebar row:selected { background: alpha(@window_fg_color, 0.09); color: @window_fg_color; }
+.sidebar .indicator { min-width: 3px; min-height: 16px; border-radius: 2px; background: transparent; }
+.sidebar row:selected .indicator { background: @accent_color; }
+.sidebar-heading { font-size: 11px; font-weight: 700; opacity: 0.5; margin: 14px 12px 4px; }
+
+/* Pages */
+.content { background: alpha(@window_fg_color, 0.025); border-top-left-radius: 8px; border-left: 1px solid alpha(@window_fg_color, 0.07); border-top: 1px solid alpha(@window_fg_color, 0.07); }
+.page { padding: 28px 36px 36px 36px; }
+.page-title { font-size: 28px; font-weight: 600; }
+.page-subtitle { opacity: 0.7; margin-bottom: 8px; }
+.section-title { font-size: 14px; font-weight: 600; margin-top: 8px; }
+
+/* Cards */
+.card {
+    background: alpha(@window_fg_color, 0.04);
+    border: 1px solid alpha(@window_fg_color, 0.08);
+    border-radius: 8px;
+    padding: 16px;
+}
+.card-title { font-size: 15px; font-weight: 600; }
+.card.flush { padding: 0; }
+.setting-row { padding: 14px 16px; }
+.setting-row + .setting-row { border-top: 1px solid alpha(@window_fg_color, 0.07); }
+.row-title { font-weight: 500; }
+.row-subtitle { font-size: 12px; opacity: 0.65; }
+.dim { opacity: 0.6; }
+.mono { font-family: monospace; }
+.error { color: #ff8a80; }
+.ok { color: #8fd694; }
+.warn { color: #ffcb6b; }
+
+/* Key chips, like PowerToys' shortcut keys */
+.key {
+    background: @accent_bg_color;
+    color: @accent_fg_color;
+    border-radius: 4px;
+    padding: 3px 9px;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 14px;
+}
+
+/* Buttons */
+button.accent {
+    background: @accent_bg_color;
+    color: @accent_fg_color;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 18px;
+    font-weight: 600;
+}
+button.accent:hover { background: shade(@accent_bg_color, 1.08); }
+button.accent:disabled { opacity: 0.45; }
+button.soft {
+    background: alpha(@window_fg_color, 0.06);
+    border: 1px solid alpha(@window_fg_color, 0.1);
+    border-radius: 4px;
+    padding: 5px 14px;
+}
+button.soft:hover { background: alpha(@window_fg_color, 0.1); }
+button.icon-only { padding: 6px; min-width: 0; min-height: 0; border-radius: 4px; }
+
+/* Home: quick access tiles and utility rows */
+.tile { border-radius: 6px; padding: 12px 6px; background: none; border: none; }
+.tile:hover { background: alpha(@window_fg_color, 0.06); }
+.tile label { font-size: 12px; }
+.utility { border-radius: 0; padding: 12px 16px; background: none; border: none; }
+.utility:hover { background: alpha(@window_fg_color, 0.05); }
+.banner-icon { background: alpha(@accent_color, 0.18); border-radius: 8px; padding: 14px; }
+
+/* Lists inside cards (rename preview, pinned windows, resize results) */
+.card list { background: transparent; }
+.card list row { padding: 6px 12px; border-radius: 4px; }
+.table-head { font-weight: 600; padding: 10px 12px; border-bottom: 1px solid alpha(@window_fg_color, 0.08); }
+.renamed { color: @accent_color; font-weight: 600; }
+
+/* Colour picker */
+.value-row {
+    background: alpha(@window_fg_color, 0.03);
+    border: 1px solid alpha(@window_fg_color, 0.08);
+    border-radius: 6px;
+    padding: 6px 8px 6px 16px;
+}
+.value-name { opacity: 0.55; min-width: 56px; }
+.value { font-size: 15px; }
+
+/* Zones */
+.layout-card { padding: 12px; }
+.layout-card:hover { border-color: alpha(@accent_color, 0.6); }
+flowbox flowboxchild { padding: 0; border-radius: 8px; }
+flowbox flowboxchild:focus-visible .layout-card,
+flowbox flowboxchild:selected .layout-card { border: 2px solid @accent_color; }
+
+/* Text extractor */
+textview.result, textview.result text { background: transparent; font-family: monospace; }
+entry.field { min-height: 34px; }

@@ -1,11 +1,12 @@
 # quiver
 a boredom driven microsoft powertoys replacement for linux/hyprland
 
-One binary, seven tools:
+One binary, seven tools, and a settings window for all of them:
 
 | Command | PowerToys equivalent | What it does |
 | --- | --- | --- |
-| `quiver run` | PowerToys Run | Launcher for apps, quiver's tools, `=` maths and `>` shell commands |
+| `quiver` / `quiver settings` | PowerToys Settings | Settings window with a page for every tool |
+| `quiver run` | PowerToys Run | Spotlight-style launcher for apps, quiver's tools, `=` maths and `>` shell commands |
 | `quiver zones` | FancyZones | Snap windows into predefined layouts |
 | `quiver rename` | PowerRename | Bulk-rename files with find & replace, regex and counters |
 | `quiver top` | Always On Top | Pin the focused window above everything else |
@@ -32,6 +33,11 @@ Add to your Hyprland Lua config (with caelestia, `~/.config/caelestia/hypr-user.
 ```lua
 local quiver = os.getenv("HOME") .. "/.cargo/bin/quiver"
 
+-- Keep the launcher loaded in the background so ALT + SPACE opens it instantly
+hl.on("hyprland.start", function()
+    hl.exec_cmd(quiver .. " run --daemon")
+end)
+
 hl.bind("ALT + SPACE", hl.dsp.exec_cmd(quiver .. " run"))                  -- Launcher
 hl.bind("SUPER + ALT + C", hl.dsp.exec_cmd(quiver .. " pick"))             -- Colour picker
 hl.bind("SUPER + SHIFT + T", hl.dsp.exec_cmd(quiver .. " ocr"))            -- Text extractor
@@ -45,11 +51,29 @@ hl.bind("SUPER + ALT + Left", hl.dsp.exec_cmd(quiver .. " zones snap columns 1")
 hl.bind("SUPER + ALT + Right", hl.dsp.exec_cmd(quiver .. " zones snap columns 2"))
 hl.bind("SUPER + ALT + Up", hl.dsp.exec_cmd(quiver .. " zones snap focus 1"))
 
--- Launcher pops in with blur
-hl.layer_rule({ match = { namespace = "quiver" }, animation = "popin 80%", blur = true })
+-- Launcher pops in with frosted-glass blur; ignore_alpha keeps the blur off the
+-- transparent space around the bar
+hl.layer_rule({ match = { namespace = "quiver" }, animation = "popin 80%", blur = true, ignore_alpha = 0.2 })
 ```
 
+## Settings window (`quiver`)
+
+Run `quiver` with no command (or `quiver settings`, or search "settings" in the launcher). Like PowerToys Settings, it has:
+
+- **Home**: Hyprland connection status, quick access to every tool, all your quiver keybinds, and a utilities list
+- **Colour Picker**: pick a colour, see recent picks, shades, and HEX / RGB / HSL / HSV / CMYK values with copy buttons
+- **Rename**: find & replace with a live original → renamed preview, then Apply
+- **Zones**: every layout drawn as a card; click one to tile your workspace, or edit the layouts file
+- **Always On Top**: pin or unpin your open windows
+- **Text Extractor**, **Image Resizer** and **Launcher** pages
+
+Each tool page shows the keybinds it found in your Hyprland Lua config. The window follows your GTK theme's colours.
+
 ## Launcher (`quiver run`)
+
+The launcher stays loaded in the background after the first use, so it opens in well under 0.1 s (GTK takes over a second to start from scratch). `quiver run` asks the background launcher to show itself and exits immediately; pressing the key again while it's open hides it. `quiver run --daemon` starts it hidden, e.g. at login, so even the first open is instant.
+
+A floating, Spotlight-style search bar with app icons. The round buttons next to it limit results to apps, quiver's tools, commands or maths; click one again to go back to everything. With blur on (see the `layer_rule` above) it looks like frosted glass.
 
 - Type to fuzzy-search installed apps (`vsc` finds Visual Studio Code) and quiver's own tools (`color`, `ocr`, `pin`, `zones`)
 - Type maths like `2*21` or `=sqrt(2)`, Enter copies the result

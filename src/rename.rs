@@ -14,7 +14,7 @@ pub struct Options {
 
 /// Works out each file's new name. `{n}` in the replacement becomes a counter
 /// (1, 2, 3...). Files whose name doesn't change are left out.
-fn plan(opts: &Options) -> Result<Vec<(PathBuf, PathBuf)>> {
+pub fn plan(opts: &Options) -> Result<Vec<(PathBuf, PathBuf)>> {
     let pattern = if opts.regex { opts.find.clone() } else { regex::escape(&opts.find) };
     let re: Regex = RegexBuilder::new(&pattern)
         .case_insensitive(opts.ignore_case)
@@ -47,7 +47,7 @@ fn plan(opts: &Options) -> Result<Vec<(PathBuf, PathBuf)>> {
 }
 
 /// Refuses renames that would overwrite something or give two files one name.
-fn check(renames: &[(PathBuf, PathBuf)]) -> Result<()> {
+pub fn check(renames: &[(PathBuf, PathBuf)]) -> Result<()> {
     let sources: HashSet<&Path> = renames.iter().map(|(from, _)| from.as_path()).collect();
     let mut targets = HashSet::new();
     for (from, to) in renames {
@@ -80,7 +80,13 @@ pub fn run(opts: Options) -> Result<()> {
         println!("\nPreview only. Add --yes to rename {} file(s).", renames.len());
         return Ok(());
     }
+    apply(&renames)?;
+    println!("\nRenamed {} file(s).", renames.len());
+    Ok(())
+}
 
+/// Renames files on disk. Call `check` first.
+pub fn apply(renames: &[(PathBuf, PathBuf)]) -> Result<()> {
     // Two steps (old → temp → new) so swaps like a→b, b→a don't clobber each other.
     let temps: Vec<PathBuf> = renames
         .iter()
@@ -93,7 +99,6 @@ pub fn run(opts: Options) -> Result<()> {
     for ((_, to), temp) in renames.iter().zip(&temps) {
         std::fs::rename(temp, to).with_context(|| format!("renaming to {}", to.display()))?;
     }
-    println!("\nRenamed {} file(s).", renames.len());
     Ok(())
 }
 

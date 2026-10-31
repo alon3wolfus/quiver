@@ -1,4 +1,6 @@
 mod calc;
+mod color;
+mod gui;
 mod launcher;
 mod ocr;
 mod picker;
@@ -15,8 +17,9 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
+    /// With no command, the settings window opens
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 #[derive(Subcommand)]
@@ -39,7 +42,13 @@ enum Command {
         action: zones::Action,
     },
     /// Open the app launcher / calculator / command runner
-    Run,
+    Run {
+        /// Start the launcher hidden in the background (e.g. at login) so opening it is instant
+        #[arg(long)]
+        daemon: bool,
+    },
+    /// Open the settings window with every tool
+    Settings,
     /// Toggle "always on top" for the focused window (tiled windows return to the grid on unpin)
     Top {
         /// Target this window address instead of the focused one
@@ -78,11 +87,13 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
-    match Cli::parse().command {
+    let Some(command) = Cli::parse().command else { return gui::run() };
+    match command {
         Command::Pick { format } => picker::pick(&format),
         Command::Ocr { lang } => ocr::extract(&lang),
         Command::Zones { action } => zones::run(action),
-        Command::Run => launcher::run(),
+        Command::Run { daemon } => launcher::run(daemon),
+        Command::Settings => gui::run(),
         Command::Top { address } => top::toggle(address.as_deref()),
         Command::Rename { find, replace, files, regex, ignore_case, yes } => {
             rename::run(rename::Options { find, replace, files, regex, ignore_case, yes })
