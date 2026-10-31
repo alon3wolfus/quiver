@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Quiver
+GenericName=Desktop Tools
+Comment=PowerToys-style tools for Hyprland: launcher, window zones, colour picker, OCR and more
+Exec=quiver settings
+Icon=quiver
+Terminal=false
+Categories=Settings;DesktopSettings;
+Keywords=powertoys;launcher;zones;colour;color;picker;ocr;rename;resize;pin;
+StartupWMClass=dev.quiver.settings

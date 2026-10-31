@@ -48,13 +48,15 @@ window { background: transparent; }
 }
 .results { margin: 0 8px; }
 .results list { background: transparent; }
-.results row { border-radius: 12px; padding: 6px 10px; }
+.results row { border-radius: 14px; padding: 10px 14px; min-height: 48px; }
+/* Symbolic icons (quiver's own tools) take this colour; app icons keep theirs. */
+.results row { color: #2a3646; }
 .results row:selected { background: rgba(60, 90, 130, 0.16); }
 .results row:hover { background: rgba(60, 90, 130, 0.09); }
 .panel label { color: #16202c; }
-.title { font-weight: 600; font-size: 14px; }
-.subtitle { opacity: 0.7; font-size: 12px; }
-.kind { opacity: 0.5; font-size: 11px; }
+.title { font-weight: 600; font-size: 15px; }
+.subtitle { opacity: 0.7; font-size: 12.5px; }
+.kind { opacity: 0.5; font-size: 11.5px; }
 .hint { opacity: 0.6; font-size: 12px; margin: 4px 12px 2px; }
 "#;
 
@@ -383,11 +385,11 @@ fn search(
 
 fn row(item: &Item) -> gtk::ListBoxRow {
     let (title, subtitle) = item.labels();
-    let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    hbox.append(&item.icon(32));
+    let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+    hbox.append(&item.icon(40));
     let vbox = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(1)
+        .spacing(3)
         .valign(gtk::Align::Center)
         .hexpand(true)
         .build();
@@ -404,7 +406,9 @@ fn row(item: &Item) -> gtk::ListBoxRow {
         vbox.append(&label(subtitle, "subtitle"));
     }
     hbox.append(&vbox);
-    hbox.append(&label(item.kind().into(), "kind"));
+    let kind = label(item.kind().into(), "kind");
+    kind.set_valign(gtk::Align::Center);
+    hbox.append(&kind);
     gtk::ListBoxRow::builder().child(&hbox).build()
 }
 
@@ -455,16 +459,30 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     window.set_layer(if snapshot.is_some() { Layer::Background } else { Layer::Overlay });
     window.set_keyboard_mode(if snapshot.is_some() { KeyboardMode::None } else { KeyboardMode::Exclusive });
     window.set_namespace(Some("quiver"));
-    window.set_anchor(Edge::Top, true);
-    window.set_margin(Edge::Top, 220);
+    // A real launcher covers the whole screen with an invisible layer, so a click
+    // anywhere outside the bar can close it (like Spotlight). Snapshots stay bar-sized.
+    let fullscreen = snapshot.is_none();
+    if fullscreen {
+        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+            window.set_anchor(edge, true);
+        }
+        // Don't push other surfaces (bars, docks) out of the way.
+        window.set_exclusive_zone(-1);
+    } else {
+        window.set_anchor(Edge::Top, true);
+        window.set_margin(Edge::Top, 220);
+    }
 
     // Padding leaves room for the drop shadows.
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .margin_start(24)
         .margin_end(24)
-        .margin_top(24)
+        .margin_top(if fullscreen { 244 } else { 24 })
         .margin_bottom(32)
+        .halign(gtk::Align::Center)
+        .valign(gtk::Align::Start)
+        .width_request(712)
         .build();
 
     // One glass panel holds the search bar and, once you type, the results below it.
@@ -497,7 +515,7 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
         .child(&list)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
-        .max_content_height(460)
+        .max_content_height(560)
         .visible(false)
         .css_classes(["results"])
         .build();
@@ -689,6 +707,22 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
         });
     }
     window.add_controller(keys);
+
+    // Clicking the empty space around the bar closes the launcher.
+    let outside = gtk::GestureClick::new();
+    {
+        let (top, window, close) = (top.clone(), window.clone(), close.clone());
+        outside.connect_pressed(move |_, _, x, y| {
+            let inside = top.compute_bounds(&window).is_some_and(|b| {
+                let (x, y) = (x as f32, y as f32);
+                x >= b.x() && x <= b.x() + b.width() && y >= b.y() && y <= b.y() + b.height()
+            });
+            if !inside {
+                close();
+            }
+        });
+    }
+    window.add_controller(outside);
 
     if mode == Mode::Once {
         if let Ok(query) = std::env::var("QUIVER_QUERY") {
