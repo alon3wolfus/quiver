@@ -13,6 +13,8 @@ optdepends=(
   'tesseract-data-eng: English text recognition for the text extractor'
   'libnotify: notifications after picking a colour or copying text'
   'foot: terminal for running launcher commands with Shift+Enter'
+  'plocate: whole-system file search ($$ in the launcher)'
+  'gpu-screen-recorder: screen recording (quiver record)'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 # Run `updpkgsums` after the v$pkgver tag is pushed to fill this in.

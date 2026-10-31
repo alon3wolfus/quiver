@@ -10,7 +10,7 @@ a boredom driven microsoft powertoys replacement for linux/hyprland
   <img src="docs/settings-picker.png" width="49%" alt="Colour picker">
 </p>
 
-One binary, seven tools, and a settings window for all of them:
+One binary, eleven tools, and a settings window for all of them:
 
 | Command | PowerToys equivalent | What it does |
 | --- | --- | --- |
@@ -22,6 +22,10 @@ One binary, seven tools, and a settings window for all of them:
 | `quiver pick` | Color Picker | Click any pixel, its colour is copied (`--format hex/rgb/hsl/hsv/cmyk`) |
 | `quiver ocr` | Text Extractor | Drag a box over the screen, the text inside is copied (`--lang eng+deu`) |
 | `quiver resize` | Image Resizer | Shrink images to a preset, exact size or percentage |
+| `quiver ruler` | Screen Ruler | Measure pixel distances on screen, with edge detection |
+| `quiver zoom` / `draw` / `record` | ZoomIt | Zoom the screen, draw on it, and record it |
+| `quiver locksmith` | File Locksmith | Show which processes are using a file or folder |
+| `quiver settings display` | (Windows display settings) | Resolution, refresh rate, scale, rotation and layout of monitors |
 
 Needs Hyprland 0.55 or newer (the Lua config version).
 
@@ -50,7 +54,7 @@ Hyprland 0.55+ comes from `trixie-backports` on Debian 13. The `.deb` recommends
 ### From source
 
 ```bash
-sudo pacman -S --needed rustup gtk4 gtk4-layer-shell hyprpicker grim slurp wl-clipboard tesseract tesseract-data-eng libnotify
+sudo pacman -S --needed rustup gtk4 gtk4-layer-shell hyprpicker grim slurp wl-clipboard tesseract tesseract-data-eng libnotify gpu-screen-recorder plocate
 rustup default stable
 cargo install --path .
 ```
@@ -113,6 +117,8 @@ A floating, Spotlight-style search bar with app icons. The round buttons next to
 
 - Type to fuzzy-search installed apps (`vsc` finds Visual Studio Code) and quiver's own tools (`color`, `ocr`, `pin`, `zones`)
 - Type maths like `2*21` or `=sqrt(2)`, Enter copies the result
+- Type `$` to search files in your home folder, e.g. `$report` (Enter opens it, Shift+Enter shows it in its folder). quiver keeps an index of your home folder in memory, skipping hidden folders and build/dependency folders, and refreshes it in the background.
+- Type `$$` to search every file on the system through [plocate](https://plocate.sesse.net/). Install it once with `sudo pacman -S plocate && sudo updatedb`; its timer keeps the database up to date.
 - Type `>` to list only the commands on your PATH, e.g. `>htop` or `>ls -la`
   - Enter runs the command, Shift+Enter runs it in your terminal and keeps it open
 - Up/Down or Tab to move, Enter to launch, Escape to close
@@ -165,6 +171,30 @@ quiver resize scan.jpg --size 1200x1200 --overwrite
 - Sizes: `small` (854×480), `medium` (1366×768, the default), `large` (1920×1080), `phone` (320×568), `WIDTHxHEIGHT` or `N%`
 - Keeps the aspect ratio and never enlarges with a fixed size
 - Saves next to the original as `photo (Medium).jpg`, unless you pass `--overwrite`
+
+## Screen Ruler (`quiver ruler`)
+
+Freezes the focused monitor. Moving the mouse draws lines out to the nearest colour edge in each direction with the width × height in pixels; drag to measure a box; click to copy the size (e.g. `320x48`); Esc closes.
+
+## ZoomIt (`quiver zoom`, `quiver draw`, `quiver record`)
+
+- `quiver zoom in` / `out` / `reset` / `toggle` zooms the screen around the mouse (Hyprland's built-in zoom)
+- `quiver draw` freezes the screen so you can draw on it: drag to draw, Shift for lines, Ctrl for boxes, R G B Y O P W K for colours, +/− for size, Ctrl+Z undo, E clear, Ctrl+C copy, Ctrl+S save to Pictures, Esc close
+- `quiver record` starts recording the focused monitor to your Videos folder with gpu-screen-recorder; run it again to stop. `--region` lets you drag an area first
+
+## File Locksmith (`quiver locksmith <paths>`)
+
+Lists the processes that have a file open, use a folder as their working directory, or have a file loaded. The settings page adds an End task button. Other users' processes only show when run as root.
+
+## Displays (`quiver settings display`)
+
+Change each monitor's resolution and refresh rate, scale, rotation, position, or turn it off. Changes apply live and, like Windows, revert after 15 seconds unless you click Keep. "Save as default" writes `~/.config/quiver/monitors.lua`; load it at login by adding this to your Hyprland config:
+
+```lua
+dofile(os.getenv("HOME") .. "/.config/quiver/monitors.lua")
+```
+
+The page also sets the text size for GTK apps.
 
 ## License
 

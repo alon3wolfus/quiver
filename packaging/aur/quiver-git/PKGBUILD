@@ -14,6 +14,8 @@ optdepends=(
   'tesseract-data-eng: English text recognition for the text extractor'
   'libnotify: notifications after picking a colour or copying text'
   'foot: terminal for running launcher commands with Shift+Enter'
+  'plocate: whole-system file search ($$ in the launcher)'
+  'gpu-screen-recorder: screen recording (quiver record)'
 )
 provides=("$_pkgname")
 conflicts=("$_pkgname")

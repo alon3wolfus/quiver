@@ -89,9 +89,11 @@ pub fn spawn_in_terminal(cmd: &str) -> Result<()> {
     spawn(&format!("{} --hold sh -c {}", terminal(), sh_quote(cmd)))
 }
 
-/// The JSON reply of a `hyprctl -j <query>` call, e.g. "clients" or "activewindow".
+/// The JSON reply of a `hyprctl -j <query>` call, e.g. "clients" or "monitors all".
 pub fn hypr_query(query: &str) -> Result<serde_json::Value> {
-    Ok(serde_json::from_str(&output("hyprctl", &["-j", query])?)?)
+    let mut args = vec!["-j"];
+    args.extend(query.split_whitespace());
+    Ok(serde_json::from_str(&output("hyprctl", &args)?)?)
 }
 
 #[cfg(test)]

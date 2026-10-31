@@ -167,7 +167,10 @@ pub fn build(ctx: &Rc<Ctx>) -> gtk::Box {
             run_hidden(&window, picker::pick_colour, move |result| match result {
                 Ok(Some(colour)) => {
                     state.select(colour);
-                    status.set_label("");
+                    // Like PowerToys, picking copies the colour straight away.
+                    let hex = colour.format("hex").unwrap_or_default();
+                    status.clipboard().set_text(&hex);
+                    status.set_label(&format!("Copied {hex}"));
                 }
                 Ok(None) => {}
                 Err(err) => status.set_label(&format!("{err:#}")),

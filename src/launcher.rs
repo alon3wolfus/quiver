@@ -1,4 +1,4 @@
-use crate::{calc, util, zones};
+use crate::{calc, files, util, zones};
 use anyhow::Result;
 use gtk::prelude::*;
 use gtk::{gdk, glib};
@@ -8,7 +8,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::rc::Rc;
 
 const MAX_RESULTS: usize = 50;
@@ -102,6 +103,16 @@ enum Item {
     Tool(Tool),
     Calc(String),
     Command(String),
+    File(files::Hit),
+}
+
+/// "/home/me/Documents/a.pdf" → "~/Documents".
+fn short_parent(path: &str) -> String {
+    let parent = Path::new(path).parent().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    match std::env::var("HOME") {
+        Ok(home) if parent.starts_with(&home) => format!("~{}", &parent[home.len()..]),
+        _ => parent,
+    }
 }
 
 impl Item {
@@ -111,6 +122,10 @@ impl Item {
             Item::Tool(tool) => (tool.name.clone(), tool.description.clone()),
             Item::Calc(result) => (format!("= {result}"), "Enter to copy".into()),
             Item::Command(cmd) => (cmd.clone(), "Enter run  ·  Shift+Enter run in terminal".into()),
+            Item::File(hit) => {
+                let name = Path::new(&hit.path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                (name, short_parent(&hit.path))
+            }
         }
     }
 
@@ -120,24 +135,38 @@ impl Item {
             Item::Tool(_) => "quiver",
             Item::Calc(_) => "Calculator",
             Item::Command(_) => "Command",
+            Item::File(hit) if hit.is_dir => "Folder",
+            Item::File(_) => "File",
         }
     }
 
     /// What Enter does, shown after the query like Spotlight's "— Open".
     fn action(&self) -> &'static str {
         match self {
-            Item::App(_) | Item::Tool(_) => "Open",
+            Item::App(_) | Item::Tool(_) | Item::File(_) => "Open",
             Item::Calc(_) => "Copy",
             Item::Command(_) => "Run",
         }
     }
 
     fn icon(&self, size: i32) -> gtk::Image {
+        if let Item::File(hit) = self {
+            // Icon for the file's type, e.g. a PDF or image icon.
+            let image = if hit.is_dir {
+                gtk::Image::from_icon_name("folder")
+            } else {
+                let (kind, _) = gtk::gio::content_type_guess(Some(&hit.path), None);
+                gtk::Image::from_gicon(&gtk::gio::content_type_get_icon(&kind))
+            };
+            image.set_pixel_size(size);
+            return image;
+        }
         let name = match self {
             Item::App(app) => app.icon.as_str(),
             Item::Tool(tool) => tool.icon.as_str(),
             Item::Calc(_) => "accessories-calculator",
             Item::Command(_) => "utilities-terminal",
+            Item::File(_) => unreachable!(),
         };
         // Desktop files may give a full path instead of an icon theme name.
         let image = if name.starts_with('/') {
@@ -167,7 +196,38 @@ impl Item {
             Item::Calc(result) => util::copy(result),
             Item::Command(cmd) if in_terminal => util::spawn_in_terminal(cmd),
             Item::Command(cmd) => util::spawn(cmd),
+            // Shift+Enter shows the file in its folder instead of opening it.
+            Item::File(hit) if in_terminal => {
+                let parent = Path::new(&hit.path).parent().unwrap_or(Path::new("/"));
+                util::spawn(&format!("xdg-open {}", util::sh_quote(&parent.to_string_lossy())))
+            }
+            Item::File(hit) => util::spawn(&format!("xdg-open {}", util::sh_quote(&hit.path))),
         }
+    }
+}
+
+/// Results and a status line for `$query` (home) and `$$query` (whole system).
+fn search_files(text: &str, index: Option<&files::Index>) -> (Vec<Item>, String) {
+    let to_items = |hits: Vec<files::Hit>| hits.into_iter().map(Item::File).collect();
+    if let Some(query) = text.strip_prefix("$$") {
+        if !files::plocate_installed() {
+            return (Vec::new(), "Whole-system search needs plocate: sudo pacman -S plocate && sudo updatedb".into());
+        }
+        if query.trim().is_empty() {
+            return (Vec::new(), "Search every file on the system".into());
+        }
+        return match files::locate(query) {
+            Ok(hits) => (to_items(hits), "Everywhere (plocate)".into()),
+            Err(err) => (Vec::new(), format!("{err:#}")),
+        };
+    }
+    let query = text.strip_prefix('$').unwrap_or(text);
+    match index {
+        None => (Vec::new(), "Indexing your home folder…".into()),
+        Some(index) if query.trim().is_empty() => {
+            (Vec::new(), format!("Search {} files in your home folder  ·  $$ searches everywhere", index.len()))
+        }
+        Some(index) => (to_items(index.search(query)), "Home folder  ·  Shift+Enter shows it in its folder".into()),
     }
 }
 
@@ -184,6 +244,12 @@ fn tools() -> Vec<Tool> {
         tool("Text Extractor", "Copy the text from a screen region (OCR)", "ocr text extractor screenshot", "insert-text-symbolic", &["ocr"]),
         tool("Always On Top", "Pin or unpin the focused window", "always on top pin float sticky", "view-pin-symbolic", &["top"]),
         tool("Quiver Settings", "Open the settings window with every tool", "settings preferences powertoys quiver rename resize", "preferences-system-symbolic", &["settings"]),
+        tool("Screen Ruler", "Measure distances on the screen", "ruler measure pixels distance size", "tool-measure", &["ruler"]),
+        tool("Draw on Screen", "Annotate a frozen screenshot, then copy or save it", "draw annotate zoomit pen", "draw-freehand-symbolic", &["draw"]),
+        tool("Zoom", "Zoom the screen in or back to normal", "zoom magnify zoomit", "zoom-in-symbolic", &["zoom", "toggle"]),
+        tool("Record Screen", "Start or stop recording the screen", "record video capture zoomit screencast", "media-record-symbolic", &["record"]),
+        tool("Displays", "Resolution, scale and layout of your monitors", "display monitor resolution scale refresh", "video-display-symbolic", &["settings", "display"]),
+        tool("File Locksmith", "See which programs are using a file", "locksmith file lock in use process", "changes-prevent-symbolic", &["settings", "locksmith"]),
     ];
     for layout in zones::layout_names() {
         tools.push(Tool {
@@ -498,7 +564,10 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     let bar = gtk::Box::builder().orientation(gtk::Orientation::Horizontal).spacing(12).css_classes(["bar"]).build();
     let search_icon = gtk::Image::from_icon_name("system-search-symbolic");
     search_icon.set_pixel_size(20);
-    let entry = gtk::Entry::builder().placeholder_text("Quiver Search").hexpand(true).build();
+    let entry = gtk::Entry::builder()
+        .placeholder_text("Quiver Search   ·   $ files   ·   $$ everywhere")
+        .hexpand(true)
+        .build();
     // "— Open" and the top hit's icon at the end of the bar.
     let action = gtk::Label::builder().css_classes(["action"]).visible(false).build();
     let hit = gtk::Box::builder().valign(gtk::Align::Center).build();
@@ -549,6 +618,27 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     // Scanning $PATH only happens the first time commands are searched.
     let commands: Rc<OnceCell<Vec<String>>> = Rc::default();
     let items: Rc<RefCell<Vec<Item>>> = Rc::default();
+    let file_index: Rc<RefCell<Option<Arc<files::Index>>>> = Rc::default();
+    let indexing = Rc::new(Cell::new(false));
+    // (Re)builds the home index off the UI thread, then refreshes a `$` search.
+    let start_index = {
+        let (file_index, indexing, entry) = (file_index.clone(), indexing.clone(), entry.clone());
+        Rc::new(move || {
+            if indexing.replace(true) {
+                return;
+            }
+            let (file_index, indexing, entry) = (file_index.clone(), indexing.clone(), entry.clone());
+            glib::spawn_future_local(async move {
+                if let Ok(index) = gtk::gio::spawn_blocking(files::Index::home).await {
+                    *file_index.borrow_mut() = Some(Arc::new(index));
+                }
+                indexing.set(false);
+                if entry.text().starts_with('$') {
+                    entry.emit_by_name::<()>("changed", &[]);
+                }
+            });
+        })
+    };
 
     // Whether the user has the launcher open (not the same as visible: the warm-up
     // frame is visible but transparent).
@@ -570,6 +660,7 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
     };
 
     let refresh = {
+        let (file_index, start_index) = (file_index.clone(), start_index.clone());
         let (list, scroller, panel, divider, buttons, items, filter, hint, entry, apps, tool_list) = (
             list.clone(),
             scroller.clone(),
@@ -585,7 +676,19 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
         );
         Rc::new(move || {
             let cached = || commands.get_or_init(load_commands).clone();
-            let found = search(&apps.borrow(), &tool_list.borrow(), cached, &entry.text(), filter.get());
+            let text = entry.text();
+            let mut message = None;
+            let found = if text.starts_with('$') {
+                if file_index.borrow().is_none() {
+                    start_index();
+                }
+                let index = file_index.borrow().clone();
+                let (found, msg) = search_files(&text, index.as_deref());
+                message = Some(msg);
+                found
+            } else {
+                search(&apps.borrow(), &tool_list.borrow(), cached, &text, filter.get())
+            };
             // Store results before selecting a row, so the bar's top-hit icon matches.
             *items.borrow_mut() = found.clone();
             list.remove_all();
@@ -596,10 +699,11 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
             select(&list, &scroller, 0);
             let active = FILTERS.iter().find(|(f, ..)| *f == filter.get());
             if let Some((_, _, name)) = active {
-                hint.set_label(&format!("{name} only"));
+                message.get_or_insert(format!("{name} only"));
             }
-            hint.set_visible(active.is_some());
-            let expanded = !found.is_empty() || active.is_some();
+            hint.set_label(message.as_deref().unwrap_or(""));
+            hint.set_visible(message.is_some());
+            let expanded = !found.is_empty() || message.is_some();
             scroller.set_visible(!found.is_empty());
             divider.set_visible(expanded);
             if expanded {
@@ -758,6 +862,9 @@ fn build_ui(app: &gtk::Application, mode: Mode) {
             refresh();
             window.present();
             entry.grab_focus();
+            if file_index.borrow().as_ref().is_none_or(|i| i.built.elapsed().as_secs() > 120) {
+                start_index();
+            }
             let (apps, tool_list) = (apps.clone(), tool_list.clone());
             glib::idle_add_local_once(move || {
                 *apps.borrow_mut() = load_apps();

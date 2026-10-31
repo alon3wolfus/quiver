@@ -1,14 +1,21 @@
 mod calc;
 mod color;
+mod display;
+mod draw;
+mod files;
 mod gui;
 mod launcher;
+mod locksmith;
 mod ocr;
+mod overlay;
 mod picker;
 mod rename;
 mod resize;
+mod ruler;
 mod top;
 mod util;
 mod zones;
+mod zoomit;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -48,7 +55,30 @@ enum Command {
         daemon: bool,
     },
     /// Open the settings window with every tool
-    Settings,
+    Settings {
+        /// Page to open, e.g. display, zones, picker
+        page: Option<String>,
+    },
+    /// Measure distances on the screen (Screen Ruler)
+    Ruler,
+    /// Draw on a frozen screenshot, then copy or save it (ZoomIt)
+    Draw,
+    /// Zoom the screen around the mouse (ZoomIt)
+    Zoom {
+        #[arg(value_enum, default_value = "toggle")]
+        action: zoomit::ZoomAction,
+    },
+    /// Start or stop recording the screen to ~/Videos (ZoomIt)
+    Record {
+        /// Drag to choose the area to record
+        #[arg(long)]
+        region: bool,
+    },
+    /// Show which processes are using files or folders (File Locksmith)
+    Locksmith {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
     /// Toggle "always on top" for the focused window (tiled windows return to the grid on unpin)
     Top {
         /// Target this window address instead of the focused one
@@ -87,13 +117,18 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
-    let Some(command) = Cli::parse().command else { return gui::run() };
+    let Some(command) = Cli::parse().command else { return gui::run(None) };
     match command {
         Command::Pick { format } => picker::pick(&format),
         Command::Ocr { lang } => ocr::extract(&lang),
         Command::Zones { action } => zones::run(action),
         Command::Run { daemon } => launcher::run(daemon),
-        Command::Settings => gui::run(),
+        Command::Settings { page } => gui::run(page),
+        Command::Ruler => ruler::run(),
+        Command::Draw => draw::run(),
+        Command::Zoom { action } => zoomit::zoom(action).map(|z| println!("zoom {}%", (z * 100.0).round())),
+        Command::Record { region } => zoomit::record(region).map(|msg| println!("{msg}")),
+        Command::Locksmith { paths } => locksmith::run(&paths),
         Command::Top { address } => top::toggle(address.as_deref()),
         Command::Rename { find, replace, files, regex, ignore_case, yes } => {
             rename::run(rename::Options { find, replace, files, regex, ignore_case, yes })

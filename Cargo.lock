@@ -846,6 +846,7 @@ name = "quiver"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "cairo-rs",
  "clap",
  "gtk4",
  "gtk4-layer-shell",

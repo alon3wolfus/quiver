@@ -11,6 +11,7 @@ categories = ["command-line-utilities", "gui"]
 
 [dependencies]
 anyhow = "1.0.104"
+cairo-rs = { version = "0.22", features = ["png"] }
 clap = { version = "4.6.7", features = ["derive"] }
 gtk = { version = "0.11", package = "gtk4", features = ["v4_12"] }
 gtk4-layer-shell = "0.8.1"
@@ -37,7 +38,7 @@ launcher, FancyZones-like window layouts, always on top, a colour picker, \
 text extraction (OCR), bulk rename and an image resizer, plus a settings window. \
 Needs Hyprland 0.55 or newer (Lua config)."""
 depends = "libc6 (>= 2.39), libgtk-4-1 (>= 4.12), libgtk4-layer-shell0"
-recommends = "hyprland (>= 0.55), hyprpicker, grim, slurp, wl-clipboard, tesseract-ocr, tesseract-ocr-eng, libnotify-bin"
+recommends = "hyprland (>= 0.55), hyprpicker, grim, slurp, wl-clipboard, tesseract-ocr, tesseract-ocr-eng, libnotify-bin, plocate"
 assets = [
     ["target/release/quiver", "usr/bin/", "755"],
     ["packaging/quiver.desktop", "usr/share/applications/", "644"],

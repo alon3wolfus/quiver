@@ -1,13 +1,17 @@
 //! The settings window: a PowerToys-style home page plus a page per tool.
 
+mod display;
 mod home;
 mod launcher;
+mod locksmith;
 mod ocr;
 mod picker;
 mod rename;
 mod resize;
+mod ruler;
 mod top;
 mod zones;
+mod zoomit;
 
 use anyhow::Result;
 use gtk::prelude::*;
@@ -71,6 +75,30 @@ pub const PAGES: &[PageInfo] = &[
         title: "Image Resizer",
         icon: "image-x-generic-symbolic",
         description: "Shrink images to a preset size, an exact size or a percentage.",
+    },
+    PageInfo {
+        id: "ruler",
+        title: "Screen Ruler",
+        icon: "tool-measure",
+        description: "Measure distances and sizes on your screen in pixels, with edge detection.",
+    },
+    PageInfo {
+        id: "zoomit",
+        title: "ZoomIt",
+        icon: "zoom-in-symbolic",
+        description: "Zoom in, draw on and record your screen, for presentations and demos.",
+    },
+    PageInfo {
+        id: "locksmith",
+        title: "File Locksmith",
+        icon: "changes-prevent-symbolic",
+        description: "See which programs are using a file or folder, and end them so you can delete or move it.",
+    },
+    PageInfo {
+        id: "display",
+        title: "Displays",
+        icon: "video-display-symbolic",
+        description: "Resolution, refresh rate, scale, rotation and layout of your monitors, and text size for GTK apps.",
     },
 ];
 
@@ -136,6 +164,11 @@ pub fn describe(args: &str) -> String {
         ["settings"] => "Open quiver settings".into(),
         ["zones", "apply", layout, ..] => format!("Tile windows: {layout}"),
         ["zones", "snap", layout, zone, ..] => format!("Snap to {layout}, zone {zone}"),
+        ["ruler"] => "Measure the screen".into(),
+        ["draw"] => "Draw on the screen".into(),
+        ["zoom", action] => format!("Zoom {action}"),
+        ["record", "--region"] => "Record a screen region".into(),
+        ["record"] => "Start or stop recording".into(),
         _ => format!("quiver {args}"),
     }
 }
@@ -297,6 +330,22 @@ pub fn run_hidden<T: Send + 'static>(
     });
 }
 
+/// Hides the window and runs `quiver <args>` (e.g. an overlay like the ruler) until it exits.
+pub fn run_quiver_hidden(window: &gtk::ApplicationWindow, args: &[&str], done: impl FnOnce(Result<()>) + 'static) {
+    let args: Vec<String> = args.iter().map(|a| a.to_string()).collect();
+    run_hidden(
+        window,
+        move || -> Result<()> {
+            let status = std::process::Command::new(std::env::current_exe()?).args(&args).status()?;
+            if !status.success() {
+                anyhow::bail!("quiver {} failed", args.join(" "));
+            }
+            Ok(())
+        },
+        done,
+    );
+}
+
 /// Runs slow work (like resizing images) off the UI thread.
 pub fn run_background<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static, done: impl FnOnce(T) + 'static) {
     glib::spawn_future_local(async move {
@@ -410,6 +459,10 @@ fn build_ui(app: &gtk::Application) {
         ("ocr", ocr::build(&ctx).upcast()),
         ("rename", rename::build(&ctx).upcast()),
         ("resize", resize::build(&ctx).upcast()),
+        ("ruler", ruler::build(&ctx).upcast()),
+        ("zoomit", zoomit::build(&ctx).upcast()),
+        ("locksmith", locksmith::build(&ctx).upcast()),
+        ("display", display::build(&ctx).upcast()),
     ];
     for (id, page) in pages {
         let scroller = gtk::ScrolledWindow::builder()
@@ -440,8 +493,11 @@ fn build_ui(app: &gtk::Application) {
             }
         }));
     }
-    // QUIVER_PAGE opens a page other than Home (handy for screenshots).
-    let start = std::env::var("QUIVER_PAGE").ok().filter(|id| PAGES.iter().any(|p| p.id == id));
+    // `quiver settings <page>` or QUIVER_PAGE opens a page other than Home.
+    let start = START_PAGE
+        .with(|p| p.borrow().clone())
+        .or_else(|| std::env::var("QUIVER_PAGE").ok())
+        .filter(|id| PAGES.iter().any(|p| p.id == id));
     ctx.navigate(start.as_deref().unwrap_or("home"));
 
     let content = gtk::Box::builder().css_classes(["content"]).build();
@@ -464,7 +520,18 @@ fn build_ui(app: &gtk::Application) {
     }
 }
 
-pub fn run() -> Result<()> {
+thread_local! {
+    static START_PAGE: RefCell<Option<String>> = const { RefCell::new(None) };
+}
+
+pub fn run(page: Option<String>) -> Result<()> {
+    if let Some(id) = &page {
+        if !PAGES.iter().any(|p| p.id == id) {
+            let ids: Vec<&str> = PAGES.iter().map(|p| p.id).collect();
+            anyhow::bail!("no page `{id}`, available: {}", ids.join(", "));
+        }
+    }
+    START_PAGE.with(|p| *p.borrow_mut() = page);
     let app = gtk::Application::builder().application_id(APP_ID).build();
     app.connect_activate(build_ui);
     app.run_with_args::<&str>(&[]);
